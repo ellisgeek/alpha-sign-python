@@ -1,7 +1,11 @@
 """Commands: one instruction inside a Packet, a Command Code plus its data."""
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import ClassVar
+
+from alpha_led_sign.protocol.labels import check_file_label
+from alpha_led_sign.protocol.message import Message
 
 
 class Command(ABC):
@@ -19,3 +23,30 @@ class Command(ABC):
     @abstractmethod
     def encode_data(self) -> bytes:
         """Return the Data Field that follows the Command Code."""
+
+
+PRIORITY_LABEL = "0"
+"""The File Label of the Priority TEXT File (p. 20). Writing an empty Message to it clears it."""
+
+PRIORITY_MAX_BYTES = 125
+"""The Priority TEXT File's fixed size (p. 20)."""
+
+
+@dataclass(frozen=True)
+class WriteText(Command):
+    """Write a Message to a TEXT File (p. 18). Writing blanks the display."""
+
+    code: ClassVar[str] = "A"
+    label: str
+    message: Message
+
+    def __post_init__(self) -> None:
+        check_file_label(self.label)
+        if self.label == PRIORITY_LABEL and len(self.message.encode()) > PRIORITY_MAX_BYTES:
+            raise ValueError(
+                f"the Priority TEXT File holds at most {PRIORITY_MAX_BYTES} bytes, "
+                f"and this Message encodes to {len(self.message.encode())}"
+            )
+
+    def encode_data(self) -> bytes:
+        return self.label.encode("ascii") + self.message.encode()
