@@ -11,7 +11,7 @@ Optional settings:
 - ALPHA_SIGN_ALLOW_ERASE=1: also run tests that write the Memory Configuration,
   which ERASES EVERY FILE on the Sign.
 
-Each test maps to an item on the hardware checklist in docs/plan.md (Phase 8).
+Each test maps to an item on the hardware checklist in docs/spec.md.
 """
 
 import os

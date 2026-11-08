@@ -66,13 +66,13 @@ answers in turn. Lower `max_address` when the addresses are known to be small.
 ## Status
 
 The offline tests pass, but the library has not yet been run against a real sign.
-`docs/plan.md` (Phase 8) lists what still needs hardware confirmation. To run
-the hardware tests:
+The hardware checklist in [docs/spec.md](docs/spec.md) lists what still needs
+confirmation. To run the hardware tests:
 
 ```sh
 ALPHA_SIGN_PORT=/dev/tty.usbserial-1410 uv run pytest -m hardware
 ```
 
-The design and delivery plan are in [docs/plan.md](docs/plan.md); the domain
-terms are in [GLOSSARY.md](GLOSSARY.md). See
+The design, test seams, and open work are in [docs/spec.md](docs/spec.md);
+the domain terms are in [GLOSSARY.md](GLOSSARY.md). See
 [CONTRIBUTING.md](CONTRIBUTING.md) to work on it.

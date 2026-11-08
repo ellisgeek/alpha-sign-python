@@ -42,6 +42,7 @@ from alpha_led_sign.protocol.commands import (
 )
 from alpha_led_sign.protocol.message import Frame, Message
 from alpha_led_sign.protocol.packet import Recipient, ResponseItem, decode_response, encode_packet
+from alpha_led_sign.protocol.response import ResponseError, UnexpectedResponseError
 
 SYNC = b"\x00" * 5
 NULS = b"\x00" * 20
@@ -114,8 +115,15 @@ def test_a_read_must_be_the_last_command_in_a_packet() -> None:
 
 
 def test_read_text_rejects_a_response_to_something_else() -> None:
-    with pytest.raises(ValueError, match="TEXT File C"):
+    with pytest.raises(UnexpectedResponseError, match="TEXT File C"):
         ReadText("C").parse((ResponseItem("A", b"DFILE D"),))
+
+
+def test_a_malformed_answer_is_not_mistaken_for_an_answer_to_something_else() -> None:
+    with pytest.raises(ResponseError) as raised:
+        ReadSerialErrorStatus().parse((ResponseItem("E", b"*@@"),))
+
+    assert not isinstance(raised.value, UnexpectedResponseError)
 
 
 def test_read_string_request_and_response_match_tables_58_and_59() -> None:

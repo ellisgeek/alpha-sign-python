@@ -2,7 +2,12 @@
 
 import pytest
 
-from alpha_led_sign.protocol.packet import ResponseError, ResponseItem, decode_response
+from alpha_led_sign.protocol.packet import (
+    ResponseError,
+    ResponseItem,
+    ResponseReader,
+    decode_response,
+)
 
 NULS = b"\x00" * 20
 
@@ -44,3 +49,41 @@ def test_a_bad_checksum_is_rejected() -> None:
 def test_malformed_responses_are_rejected(data: bytes) -> None:
     with pytest.raises(ResponseError):
         decode_response(data)
+
+
+TABLE_46 = NULS + b"\x01000\x02ACFILE C\x03020C\x04"
+
+
+def test_reader_waits_for_a_response_that_arrives_in_pieces() -> None:
+    reader = ResponseReader()
+
+    assert reader.feed(TABLE_46[:25]) == []
+    assert reader.feed(TABLE_46[25:]) == [(ResponseItem("A", b"CFILE C"),)]
+
+
+def test_reader_returns_every_response_that_one_read_completes() -> None:
+    table_54 = NULS + b"\x01000\x02E&6\x0300A6\x04"
+    reader = ResponseReader()
+
+    assert reader.feed(TABLE_46 + table_54) == [
+        (ResponseItem("A", b"CFILE C"),),
+        (ResponseItem("E", b"&6"),),
+    ]
+
+
+def test_reader_returns_a_garbled_response_as_an_error_and_keeps_going() -> None:
+    bad_checksum = NULS + b"\x01000\x02ACFILE C\x03020D\x04"
+    reader = ResponseReader()
+
+    garbled, good = reader.feed(bad_checksum + TABLE_46)
+
+    assert isinstance(garbled, ResponseError)
+    assert good == (ResponseItem("A", b"CFILE C"),)
+
+
+def test_reader_keeps_an_unfinished_response_as_pending() -> None:
+    reader = ResponseReader()
+
+    reader.feed(TABLE_46 + TABLE_46[:25])
+
+    assert reader.pending == TABLE_46[:25]

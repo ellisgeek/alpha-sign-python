@@ -2,15 +2,16 @@
 
 A typed Python library that controls Alpha-protocol LED signs over serial. The
 first target is the 4120C, but nothing may be specific to one Sign Model. Read
-`GLOSSARY.md` for the domain terms, `docs/plan.md` for the design and delivery
-phases, and `docs/adr/` for decisions. `CONTRIBUTING.md` covers setup, the git
-workflow, and where the manuals come from.
+`GLOSSARY.md` for the domain terms, `docs/spec.md` for the design, the test
+seams, and the work still open, and `docs/adr/` for decisions.
+`CONTRIBUTING.md` covers setup, the git workflow, and where the manuals come
+from.
 
 Architecture: `alpha_led_sign.protocol` is pure (bytes in, bytes out, no I/O, no
 clocks, no sleeps). Required pauses are returned as data on the `Packet`'s
 chunks and the sender sleeps. A Sign Model is data, not a subclass.
 
-Tests: test-first, at the seams listed in `docs/plan.md`. Expected bytes come
+Tests: test-first, at the seams listed in `docs/spec.md`. Expected bytes come
 from an independent source, preferably the worked examples in the manual
 (cite the table or page), never recomputed the way the code does.
 

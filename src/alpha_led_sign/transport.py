@@ -7,12 +7,16 @@ from typing import Protocol, Self
 
 import serial
 
+from alpha_led_sign.protocol.packet import Packet
+
 
 class Transport(Protocol):
     """The seam between the library and the wire.
 
     ``write`` returns once the bytes have left (so that a pause measured after it is
     real silence on the line), and ``pause`` keeps the line quiet for that long.
+    ``read`` waits up to ``timeout`` seconds for bytes; ``read(0)`` returns only what has
+    already arrived, without waiting.
     """
 
     def write(self, data: bytes) -> None: ...
@@ -79,3 +83,11 @@ class SerialTransport:
 
     def close(self) -> None:
         self.port.close()
+
+
+def send_packet(transport: Transport, packet: Packet) -> None:
+    """Write each chunk of ``packet``, keeping the line quiet for each required pause."""
+    for chunk in packet.chunks:
+        transport.write(chunk.data)
+        if chunk.pause_after:
+            transport.pause(chunk.pause_after)

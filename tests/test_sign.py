@@ -7,9 +7,10 @@ import pytest
 from alpha_led_sign import Sign, SignTimeoutError, models
 from alpha_led_sign.models import UnsupportedCapability, UnsupportedCapabilityWarning
 from alpha_led_sign.protocol.codes import Color, Font, Mode, Position, StringRef
-from alpha_led_sign.protocol.commands import TimeFormat, Tone
+from alpha_led_sign.protocol.commands import ReadDayOfWeek, TimeFormat, Tone, Weekday
 from alpha_led_sign.protocol.memory import StringFile, TextFile
 from alpha_led_sign.protocol.message import Frame, Message
+from alpha_led_sign.protocol.response import ResponseError, UnexpectedResponseError
 from tests.fakes import FakeTransport
 
 SYNC = b"\x00" * 5
@@ -141,7 +142,7 @@ def test_sign_closes_its_transport_when_used_as_a_context_manager() -> None:
     assert transport.closed
 
 
-def test_the_api_sketch_in_the_plan_runs() -> None:
+def test_the_readme_example_runs() -> None:
     from alpha_led_sign import (
         Color,
         CurrentTime,
@@ -203,4 +204,64 @@ def test_a_sign_that_does_not_answer_raises_sign_timeout() -> None:
     transport = FakeTransport(responses=[NULS + b"\x01000\x02ACFI"])
 
     with pytest.raises(SignTimeoutError):
+        Sign(transport).read_text("C")
+
+
+TABLE_46 = NULS + b"\x01000\x02ACFILE C\x03020C\x04"  # Read TEXT "C"
+TABLE_54 = NULS + b"\x01000\x02E&6\x0300A6\x04"  # Read day of week
+TABLE_59 = NULS + b"\x01000\x02G28,234,000\x030237\x04"  # Read STRING "2"
+
+
+def test_a_late_answer_to_an_earlier_read_is_skipped() -> None:
+    transport = FakeTransport()
+    sign = Sign(transport)
+    with pytest.raises(SignTimeoutError):
+        sign.read_string("2")
+
+    transport.responses = [TABLE_59, TABLE_46]
+
+    assert sign.read_text("C") == Message(Frame(None, content="FILE C"))
+
+
+def test_an_answer_already_waiting_is_discarded_before_a_read_is_sent() -> None:
+    garbled = NULS + b"\x01000\x02ACFILE C\x03020D\x04"  # Table 46 with a bad checksum
+    transport = FakeTransport(waiting=[garbled], responses=[TABLE_46])
+
+    assert Sign(transport).read_text("C") == Message(Frame(None, content="FILE C"))
+
+
+def test_the_rest_of_a_response_that_began_before_a_read_is_skipped() -> None:
+    transport = FakeTransport(responses=[TABLE_54 + TABLE_59[:26]])
+    sign = Sign(transport)
+    assert sign.query(ReadDayOfWeek()) == Weekday.FRIDAY
+
+    transport.responses = [TABLE_59[26:], TABLE_46]
+
+    assert sign.read_text("C") == Message(Frame(None, content="FILE C"))
+
+
+def test_a_response_to_another_read_raises_when_no_other_read_is_waiting() -> None:
+    transport = FakeTransport(responses=[TABLE_59, TABLE_46])
+
+    with pytest.raises(UnexpectedResponseError):
+        Sign(transport).read_text("C")
+
+
+def test_only_as_many_responses_are_skipped_as_reads_went_unanswered() -> None:
+    transport = FakeTransport()
+    sign = Sign(transport)
+    with pytest.raises(SignTimeoutError):
+        sign.read_string("2")
+
+    transport.responses = [TABLE_59, TABLE_59, TABLE_46]
+
+    with pytest.raises(UnexpectedResponseError):
+        sign.read_text("C")
+
+
+def test_a_garbled_answer_raises_instead_of_being_skipped() -> None:
+    bad_checksum = NULS + b"\x01000\x02ACFILE C\x03020D\x04"
+    transport = FakeTransport(responses=[bad_checksum])
+
+    with pytest.raises(ResponseError, match="checksum"):
         Sign(transport).read_text("C")

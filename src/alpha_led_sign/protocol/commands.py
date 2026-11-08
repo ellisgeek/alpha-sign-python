@@ -18,7 +18,7 @@ from alpha_led_sign.protocol.message import (
     encode_content,
     normalize_content,
 )
-from alpha_led_sign.protocol.response import ResponseError, ResponseItem
+from alpha_led_sign.protocol.response import ResponseError, ResponseItem, UnexpectedResponseError
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
 
@@ -388,7 +388,7 @@ class ClearSerialErrorStatus(SpecialFunction):
 
 
 @dataclass(frozen=True)
-class SetSerialAddress(SpecialFunction):
+class SetSignAddress(SpecialFunction):
     """Set the Sign Address ("7", p. 26). A DIP switch address wins after a power cycle."""
 
     label: ClassVar[str] = "7"
@@ -459,7 +459,7 @@ def _find(response: Sequence[ResponseItem], code: str, prefix: str, what: str) -
     for item in response:
         if item.code == code and item.data.startswith(prefix.encode("ascii")):
             return item.data[len(prefix) :]
-    raise ResponseError(f"the Response does not contain {what}: {response!r}")
+    raise UnexpectedResponseError(f"the Response does not contain {what}: {response!r}")
 
 
 @dataclass(frozen=True)
@@ -619,7 +619,7 @@ class ReadGeneralInformation(ReadSpecial[GeneralInformation]):
 
 
 @dataclass(frozen=True)
-class NetworkQueryReply:
+class NetworkQueryResponse:
     """One Sign's answer to a Network Query (p. 32)."""
 
     sign_type: str
@@ -628,7 +628,7 @@ class NetworkQueryReply:
 
 
 @dataclass(frozen=True)
-class NetworkQuery(ReadSpecial[NetworkQueryReply]):
+class NetworkQuery(ReadSpecial[NetworkQueryResponse]):
     """Ask every Sign for its Sign Type, Sign Address, and serial errors ("-", p. 32).
 
     Broadcast it to address 0. Each Sign answers 1 s + 0.5 s x its address after the
@@ -637,7 +637,7 @@ class NetworkQuery(ReadSpecial[NetworkQueryReply]):
 
     label: ClassVar[str] = "-"
 
-    def parse(self, response: Sequence[ResponseItem]) -> NetworkQueryReply:
+    def parse(self, response: Sequence[ResponseItem]) -> NetworkQueryResponse:
         data = self._data(response)
         if len(data) != 4:
             raise ResponseError(f"expected a 4-byte Network Query answer, got {data!r}")
@@ -645,4 +645,4 @@ class NetworkQuery(ReadSpecial[NetworkQueryReply]):
             address = int(data[1:3].decode("ascii"), 16)
         except ValueError:
             raise ResponseError(f"bad Sign Address in Network Query answer {data!r}") from None
-        return NetworkQueryReply(chr(data[0]), address, SerialErrorStatus.decode(data[3]))
+        return NetworkQueryResponse(chr(data[0]), address, SerialErrorStatus.decode(data[3]))

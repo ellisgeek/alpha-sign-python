@@ -10,92 +10,9 @@ from dataclasses import dataclass
 from enum import Enum
 from importlib import resources
 
-from alpha_led_sign.protocol.codes import (
-    Attribute,
-    CharacterAttribute,
-    CharacterFlash,
-    Color,
-    Control,
-    CurrentDate,
-    CurrentTime,
-    DoubleHigh,
-    Font,
-    Mode,
-    Position,
-    Spacing,
-    SpecialGraphic,
-    SpecialMode,
-    Speed,
-    StringRef,
-    TrueDescenders,
-    Wide,
-    min_version,
-)
 from alpha_led_sign.protocol.commands import Command
+from alpha_led_sign.protocol.requirements import Capability, requires
 from alpha_led_sign.protocol.versions import ProtocolVersion
-
-
-class Capability(Enum):
-    """One feature a Sign Model can or cannot use, one per column of Tables 68-70."""
-
-    # Table 68: Modes.
-    AUTOMODE = "automode"
-    FLASH = "flash"
-    HOLD = "hold"
-    INTERLOCK = "interlock"
-    ROLL = "roll up/down/left/right"
-    ROLL_IN_OUT = "roll in/out"
-    ROTATE = "rotate"
-    COMPRESSED_ROTATE = "compressed rotate"
-    SCROLL = "scroll"
-    SLIDE = "slide"
-    CYCLE_COLORS = "cycle colors"
-    SNOW = "snow"
-    SPARKLE = "sparkle"
-    SPRAY = "spray"
-    STARBURST = "starburst"
-    SWITCH = "switch"
-    TWINKLE = "twinkle"
-    WIPE = "wipe up/down/left/right"
-    WIPE_IN_OUT = "wipe in/out"
-    EXPLODE = "explode"
-    CLOCK = "clock"
-    LEFT_RIGHT_POSITION = "left/right display position"
-    # Table 69: fonts and colors.
-    FONT_FULL_HEIGHT = "15/16-row font"
-    FONT_FULL_HEIGHT_FANCY = "15/16-row fancy font"
-    FONT_TEN_HIGH = "10-row font"
-    FONT_SEVEN_HIGH = "7-row font"
-    FONT_SEVEN_HIGH_FANCY = "7-row fancy font"
-    FONT_FIVE_HIGH = "5-row font"
-    COLOR = "color"
-    WIDE = "wide characters"
-    DOUBLE_WIDE = "double-wide characters"
-    CHARACTER_FLASH = "flashing characters"
-    DOUBLE_HIGH = "double-height characters"
-    TRUE_DESCENDERS = "true descenders"
-    FIXED_WIDTH = "fixed-width characters"
-    # Table 70: display options.
-    TIME = "time"
-    DATE = "date"
-    TEMPERATURE_FAHRENHEIT = "temperature in Fahrenheit"
-    TEMPERATURE_CELSIUS = "temperature in Celsius"
-    SPEED = "speed"
-    NEW_LINE = "new line"
-    NEW_PAGE = "new page"
-    ANIMATION = "animation"
-    STRING = "STRING File"
-    TICKER_SYMBOL = "ticker symbol"
-    VARIABLE = "variable"
-    COUNTER = "counter"
-    GRAPHIC = "graphic"
-    GIF = "GIF"
-    FLICK = "flick"
-    MESSAGE = "message"
-    # Not in the tables: Appendix G footnotes limit these to the BetaBrite model 1036.
-    BETABRITE_1036_FONTS = "BetaBrite 1036 fonts"
-    BETABRITE_1036_ANIMATIONS = "BetaBrite 1036 animations"
-
 
 # Matrix column -> Capability. Columns that split one Capability by direction
 # (horizontal/vertical, whole/half display) map to the same Capability.
@@ -285,7 +202,7 @@ def get(name: str) -> SignModel:
         raise KeyError(f"unknown Sign Model {name!r}; known: {', '.join(REGISTRY)}") from None
 
 
-class UnsupportedCapability(Exception):  # noqa: N818 (name fixed by docs/plan.md)
+class UnsupportedCapability(Exception):  # noqa: N818 (public name, docs/spec.md)
     """Raised by strict validation when a Sign Model lacks something a Command uses."""
 
 
@@ -313,9 +230,9 @@ def _problems(model: SignModel, command: Command) -> list[str]:
     if command.min_version > newest:
         problems.append(_version_problem(model, command.min_version, command))
     for code in command.codes():
-        if min_version(code) > newest:
-            problems.append(_version_problem(model, min_version(code), code))
-        capability = required_capability(code)
+        version, capability = requires(code)
+        if version > newest:
+            problems.append(_version_problem(model, version, code))
         if model.capabilities is None or capability is None:
             continue
         if capability not in model.capabilities:
@@ -333,105 +250,3 @@ def _describe(item: object) -> str:
     if isinstance(item, Command):
         return type(item).__name__
     return repr(item)
-
-
-_MODES = {
-    Mode.ROTATE: Capability.ROTATE,
-    Mode.HOLD: Capability.HOLD,
-    Mode.FLASH: Capability.FLASH,
-    Mode.ROLL_UP: Capability.ROLL,
-    Mode.ROLL_DOWN: Capability.ROLL,
-    Mode.ROLL_LEFT: Capability.ROLL,
-    Mode.ROLL_RIGHT: Capability.ROLL,
-    Mode.WIPE_UP: Capability.WIPE,
-    Mode.WIPE_DOWN: Capability.WIPE,
-    Mode.WIPE_LEFT: Capability.WIPE,
-    Mode.WIPE_RIGHT: Capability.WIPE,
-    Mode.SCROLL: Capability.SCROLL,
-    Mode.AUTOMODE: Capability.AUTOMODE,
-    Mode.ROLL_IN: Capability.ROLL_IN_OUT,
-    Mode.ROLL_OUT: Capability.ROLL_IN_OUT,
-    Mode.WIPE_IN: Capability.WIPE_IN_OUT,
-    Mode.WIPE_OUT: Capability.WIPE_IN_OUT,
-    Mode.COMPRESSED_ROTATE: Capability.COMPRESSED_ROTATE,
-    Mode.EXPLODE: Capability.EXPLODE,
-    Mode.CLOCK: Capability.CLOCK,
-}
-
-_SPECIAL_MODES = {
-    SpecialMode.TWINKLE: Capability.TWINKLE,
-    SpecialMode.SPARKLE: Capability.SPARKLE,
-    SpecialMode.SNOW: Capability.SNOW,
-    SpecialMode.INTERLOCK: Capability.INTERLOCK,
-    SpecialMode.SWITCH: Capability.SWITCH,
-    SpecialMode.SLIDE: Capability.SLIDE,
-    SpecialMode.SPRAY: Capability.SPRAY,
-    SpecialMode.STARBURST: Capability.STARBURST,
-    # Table 66 marks these two as animations.
-    SpecialMode.WELCOME: Capability.ANIMATION,
-    SpecialMode.SLOT_MACHINE: Capability.ANIMATION,
-    SpecialMode.NEWS_FLASH: Capability.BETABRITE_1036_ANIMATIONS,
-    SpecialMode.TRUMPET: Capability.BETABRITE_1036_ANIMATIONS,
-    SpecialMode.CYCLE_COLORS: Capability.CYCLE_COLORS,
-}
-
-_FONTS = {
-    Font.FIVE_HIGH: Capability.FONT_FIVE_HIGH,
-    Font.SEVEN_HIGH: Capability.FONT_SEVEN_HIGH,
-    Font.SEVEN_HIGH_FANCY: Capability.FONT_SEVEN_HIGH_FANCY,
-    Font.TEN_HIGH: Capability.FONT_TEN_HIGH,
-    Font.FULL_HEIGHT_FANCY: Capability.FONT_FULL_HEIGHT_FANCY,
-    Font.FULL_HEIGHT: Capability.FONT_FULL_HEIGHT,
-    # The rest are marked "BetaBrite model 1036 only" in Appendix G.
-}
-
-_ATTRIBUTES = {
-    Attribute.WIDE: Capability.WIDE,
-    Attribute.DOUBLE_WIDE: Capability.DOUBLE_WIDE,
-    Attribute.DOUBLE_HIGH: Capability.DOUBLE_HIGH,
-    Attribute.TRUE_DESCENDERS: Capability.TRUE_DESCENDERS,
-    Attribute.FIXED_WIDTH: Capability.FIXED_WIDTH,
-}
-
-
-def required_capability(code: object) -> Capability | None:
-    """The Capability a Sign Model needs to use ``code``, or None if none is known."""
-    match code:
-        case Mode():
-            return _MODES[code]
-        case SpecialMode():
-            return _SPECIAL_MODES[code]
-        case SpecialGraphic():
-            return Capability.ANIMATION
-        case Position.LEFT | Position.RIGHT:
-            return Capability.LEFT_RIGHT_POSITION
-        case Font():
-            return _FONTS.get(code, Capability.BETABRITE_1036_FONTS)
-        case Color():
-            return Capability.COLOR
-        case Speed():
-            return Capability.SPEED
-        case Control.NEW_LINE:
-            return Capability.NEW_LINE
-        case Control.NEW_PAGE:
-            return Capability.NEW_PAGE
-        case Wide():
-            return Capability.WIDE
-        case DoubleHigh():
-            return Capability.DOUBLE_HIGH
-        case TrueDescenders():
-            return Capability.TRUE_DESCENDERS
-        case CharacterFlash():
-            return Capability.CHARACTER_FLASH
-        case CharacterAttribute(attribute=attribute):
-            return _ATTRIBUTES.get(attribute)
-        case Spacing.FIXED_WIDTH:
-            return Capability.FIXED_WIDTH
-        case CurrentTime():
-            return Capability.TIME
-        case CurrentDate():
-            return Capability.DATE
-        case StringRef():
-            return Capability.STRING
-        case _:
-            return None

@@ -18,7 +18,7 @@ from alpha_led_sign.protocol.commands import (
     SetRunDays,
     SetRunSequence,
     SetRunTimes,
-    SetSerialAddress,
+    SetSignAddress,
     SetSpeaker,
     SetTime,
     SetTimeFormat,
@@ -190,8 +190,8 @@ def test_soft_reset_and_clear_serial_error_status_have_no_data() -> None:
     assert ClearSerialErrorStatus().encode_data() == b"4"
 
 
-def test_set_serial_address_is_two_hex_digits() -> None:
+def test_set_sign_address_is_two_hex_digits() -> None:
     # Table 15, "7" (p. 26).
-    assert SetSerialAddress(0x2F).encode_data() == b"72F"
+    assert SetSignAddress(0x2F).encode_data() == b"72F"
     with pytest.raises(ValueError, match="0-255"):
-        SetSerialAddress(256)
+        SetSignAddress(256)

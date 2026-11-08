@@ -120,9 +120,11 @@ def compute_checksum(data: bytes) -> int:
 __all__ = [
     "Chunk",
     "Packet",
+    "ReceivedResponse",
     "Recipient",
     "ResponseError",
     "ResponseItem",
+    "ResponseReader",
     "compute_checksum",
     "decode_response",
     "encode_packet",
@@ -156,3 +158,36 @@ def decode_response(data: bytes) -> tuple[ResponseItem, ...]:
     if not items or data[position:] != EOT:
         raise ResponseError(f"Response Packet must be Commands followed by EOT: {data!r}")
     return tuple(items)
+
+
+type ReceivedResponse = tuple[ResponseItem, ...] | ResponseError
+"""A Response Packet as received: its Commands, or the ResponseError it failed to decode with."""
+
+
+class ResponseReader:
+    """Splits the bytes a Sign sends back into Response Packets, however they arrive."""
+
+    def __init__(self) -> None:
+        self._buffer = b""
+
+    @property
+    def pending(self) -> bytes:
+        """Bytes received since the last complete Response."""
+        return self._buffer
+
+    def feed(self, data: bytes) -> list[ReceivedResponse]:
+        """Add received bytes; return the Responses they complete.
+
+        A Packet that fails to decode comes back as its ResponseError, in order, so the
+        caller decides whether to raise or skip it.
+        """
+        self._buffer += data
+        responses: list[ReceivedResponse] = []
+        while EOT in self._buffer:
+            end = self._buffer.index(EOT) + 1
+            packet, self._buffer = self._buffer[:end], self._buffer[end:]
+            try:
+                responses.append(decode_response(packet))
+            except ResponseError as error:
+                responses.append(error)
+        return responses

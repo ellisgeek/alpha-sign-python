@@ -91,8 +91,12 @@ The content of a TEXT File: one or more Frames shown in sequence.
 _Avoid_: text, program
 
 **Frame**:
-One part of a Message with a single Mode and Display Position, plus the text and Control Codes to show with them.
-_Avoid_: page, screen, segment
+One part of a Message with a single Mode and Display Position, plus the Segments to show with them.
+_Avoid_: page, screen, segment (a Segment is one piece of a Frame)
+
+**Segment**:
+One piece of a Frame's or STRING File's content: a run of literal text or one Control Code.
+_Avoid_: token, chunk (a Chunk is a piece of a Packet on the wire)
 
 **Mode**:
 The transition or effect used to show a Frame, for example rotate, hold, or snow.

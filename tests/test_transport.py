@@ -36,3 +36,8 @@ def test_sign_serial_opens_a_serial_transport() -> None:
 
         assert isinstance(sign.transport, SerialTransport)
         assert sign.transport.read(timeout=0.5).endswith(b"hi\x030205\x04")
+
+
+def test_sign_serial_passes_the_read_timeout_on() -> None:
+    with Sign.serial("loop://", read_timeout=0.25) as sign:
+        assert sign.read_timeout == 0.25

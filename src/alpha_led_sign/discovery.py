@@ -7,9 +7,14 @@ from dataclasses import dataclass
 from alpha_led_sign import models
 from alpha_led_sign.models import SignModel
 from alpha_led_sign.protocol.commands import NetworkQuery, SerialErrorStatus
-from alpha_led_sign.protocol.packet import EOT, decode_response
-from alpha_led_sign.sign import Sign
-from alpha_led_sign.transport import Transport
+from alpha_led_sign.protocol.packet import (
+    ReceivedResponse,
+    Recipient,
+    ResponseReader,
+    encode_packet,
+)
+from alpha_led_sign.protocol.response import ResponseError
+from alpha_led_sign.transport import Transport, send_packet
 
 FIRST_ANSWER_DELAY = 1.0
 """Seconds before the Sign at address 0 answers (p. 32)."""
@@ -46,37 +51,39 @@ def discover(
     """
     if not 0 <= max_address <= 0xFF:
         raise ValueError(f"max_address must be 0-255, got {max_address}")
-    Sign(transport, checksum=checksum).send(NetworkQuery())
+    broadcast = Recipient(models.GENERIC.sign_type, 0)
+    send_packet(transport, encode_packet(broadcast, [NetworkQuery()], checksum=checksum))
     wait = FIRST_ANSWER_DELAY + max_address * PER_ADDRESS_DELAY + MARGIN
     deadline = time.monotonic() + wait
 
     found: dict[int, DiscoveredSign] = {}
-    received = b""
+    reader = ResponseReader()
     while (remaining := deadline - time.monotonic()) > 0:
         data = transport.read(remaining)
         if not data:
             break
-        received += data
-        while EOT in received:
-            end = received.index(EOT) + 1
-            answer, received = received[:end], received[end:]
-            _collect(answer, found)
-    if received.strip(b"\x00"):
-        _garbled(received)
+        for response in reader.feed(data):
+            _collect(response, found)
+    if reader.pending.strip(b"\x00"):
+        _garbled(reader.pending)
     return sorted(found.values(), key=lambda sign: sign.address)
 
 
-def _collect(answer: bytes, found: dict[int, DiscoveredSign]) -> None:
-    try:
-        reply = NetworkQuery().parse(decode_response(answer))
-    except ValueError:
-        _garbled(answer)
+def _collect(response: ReceivedResponse, found: dict[int, DiscoveredSign]) -> None:
+    if isinstance(response, ResponseError):
+        _garbled(response)
         return
-    found[reply.address] = DiscoveredSign(reply.sign_type, reply.address, reply.errors)
+    try:
+        answer = NetworkQuery().parse(response)
+    except ResponseError as error:
+        _garbled(error)
+        return
+    found[answer.address] = DiscoveredSign(answer.sign_type, answer.address, answer.errors)
 
 
-def _garbled(answer: bytes) -> None:
+def _garbled(detail: bytes | ResponseError) -> None:
+    """Warn about an answer that could not be read: its leftover bytes, or why it failed."""
     warnings.warn(
-        f"skipped a garbled Network Query answer (do two Signs share an address?): {answer!r}",
+        f"skipped a garbled Network Query answer (do two Signs share an address?): {detail}",
         stacklevel=3,
     )

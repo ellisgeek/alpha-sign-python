@@ -35,8 +35,9 @@ from alpha_led_sign.protocol.commands import (
 )
 from alpha_led_sign.protocol.memory import MemoryFile
 from alpha_led_sign.protocol.message import Frame, Message, Segment
-from alpha_led_sign.protocol.packet import EOT, Packet, Recipient, decode_response, encode_packet
-from alpha_led_sign.transport import SerialFormat, SerialTransport, Transport
+from alpha_led_sign.protocol.packet import Recipient, ResponseReader, encode_packet
+from alpha_led_sign.protocol.response import ResponseError, UnexpectedResponseError
+from alpha_led_sign.transport import SerialFormat, SerialTransport, Transport, send_packet
 
 DEFAULT_READ_TIMEOUT = 2.0
 """Seconds to wait for each part of a Response before giving up."""
@@ -69,6 +70,8 @@ class Sign:
         self.recipient = Recipient(model.sign_type, address)
         self.strict = strict
         self.checksum = checksum
+        self._reader = ResponseReader()
+        self._unanswered = 0  # Reads sent whose Response has not arrived yet
 
     @classmethod
     def serial(
@@ -81,10 +84,18 @@ class Sign:
         address: int | str = 0,
         strict: bool = False,
         checksum: bool = True,
+        read_timeout: float = DEFAULT_READ_TIMEOUT,
     ) -> "Sign":
         """Open a Sign on a serial port (or any pyserial URL, such as ``loop://``)."""
         transport = SerialTransport(url, baudrate=baudrate, serial_format=serial_format)
-        return cls(transport, model=model, address=address, strict=strict, checksum=checksum)
+        return cls(
+            transport,
+            model=model,
+            address=address,
+            strict=strict,
+            checksum=checksum,
+            read_timeout=read_timeout,
+        )
 
     def __enter__(self) -> Self:
         return self
@@ -182,30 +193,43 @@ class Sign:
     def query[T](self, read: Read[T]) -> T:
         """Send one Read Command and parse the Sign's Response.
 
-        Use one Sign Address per Sign: only the addressed Sign may answer.
+        Use one Sign Address per Sign: only the addressed Sign may answer. Anything
+        received before the Read is sent is discarded. After that, a Response to some
+        other Read (a late answer to one that timed out) is skipped, but only as many
+        as there are unanswered Reads. A late answer to the same kind of Read can't be
+        told apart from the real one, so it is taken as the answer.
         """
+        self._discard_received()
+        began_earlier = bool(self._reader.pending.strip(b"\x00"))
         self.send(read)
-        return read.parse(decode_response(self._receive()))
-
-    def _receive(self) -> bytes:
-        received = b""
-        while EOT not in received:
+        while True:
             data = self.transport.read(self.read_timeout)
             if not data:
-                raise SignTimeoutError(f"no complete Response after {received!r}")
-            received += data
-        return received[: received.index(EOT) + 1]
+                raise SignTimeoutError(f"no complete Response after {self._reader.pending!r}")
+            for response in self._reader.feed(data):
+                self._unanswered = max(self._unanswered - 1, 0)
+                if began_earlier:
+                    began_earlier = False
+                    continue
+                if isinstance(response, ResponseError):
+                    raise response
+                try:
+                    return read.parse(response)
+                except UnexpectedResponseError:
+                    if not self._unanswered:
+                        raise
 
     def send(self, *commands: Command) -> None:
         """Validate ``commands`` against the model and send them in one Packet."""
         validate(self.model, commands, strict=self.strict)
-        self._send(encode_packet(self.recipient, commands, checksum=self.checksum))
+        send_packet(self.transport, encode_packet(self.recipient, commands, checksum=self.checksum))
+        self._unanswered += sum(isinstance(command, Read) for command in commands)
 
-    def _send(self, packet: Packet) -> None:
-        for chunk in packet.chunks:
-            self.transport.write(chunk.data)
-            if chunk.pause_after:
-                self.transport.pause(chunk.pause_after)
+    def _discard_received(self) -> None:
+        """Drop every Response that is already in, keeping a partial one to skip later."""
+        while data := self.transport.read(0):
+            for _ in self._reader.feed(data):
+                self._unanswered = max(self._unanswered - 1, 0)
 
 
 def _as_message(content: Message | Frame | str) -> Message:

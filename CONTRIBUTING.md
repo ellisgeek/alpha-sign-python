@@ -1,7 +1,7 @@
 # Contributing
 
 How to work on this library: setup, checks, the git workflow, releases, and
-the reference manuals. `docs/plan.md` covers the design; `docs/adr/` covers
+the reference manuals. `docs/spec.md` covers the design and the open work; `docs/adr/` covers
 decisions; `GLOSSARY.md` defines the terms used in code and docs.
 
 ## Setup and checks
@@ -27,7 +27,7 @@ marked `hardware` and skipped by default; run them with
 
 ## Writing tests
 
-- Work test-first, at the seams listed in `docs/plan.md`.
+- Work test-first, at the seams listed in `docs/spec.md`.
 - Expected bytes come from an independent source of truth: the worked
   examples in the protocol manual (Appendix F and others), cited by table or
   page in the test name or docstring. Never compute the expected value the way

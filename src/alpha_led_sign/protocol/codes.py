@@ -5,7 +5,6 @@ from enum import Enum
 from typing import Protocol, runtime_checkable
 
 from alpha_led_sign.protocol.labels import check_file_label
-from alpha_led_sign.protocol.versions import ProtocolVersion
 
 
 @runtime_checkable
@@ -299,23 +298,6 @@ class StringRef:
 
     def encode(self) -> bytes:
         return b"\x10" + self.label.encode("ascii")
-
-
-def min_version(code: object) -> ProtocolVersion:
-    """The earliest Protocol Version that has ``code``.
-
-    Only codes the manual marks with a version are listed; everything else
-    is taken to work with every version.
-    """
-    return _MIN_VERSIONS.get(code, ProtocolVersion.EZ_KEY_II)
-
-
-_MIN_VERSIONS: dict[object, ProtocolVersion] = {
-    Position.LEFT: ProtocolVersion.ALPHA_3_0,  # Table 12
-    Position.RIGHT: ProtocolVersion.ALPHA_3_0,  # Table 12
-    Mode.EXPLODE: ProtocolVersion.ALPHA_3_0,  # Table 65
-    Mode.CLOCK: ProtocolVersion.ALPHA_3_0,  # Table 65
-}
 
 
 @dataclass(frozen=True)
