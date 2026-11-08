@@ -3,7 +3,76 @@
 A typed Python library for controlling Alpha-protocol LED message signs (for
 example the Alpha 4000 Series) over a serial line.
 
-Work in progress. The design and delivery plan are in
-[docs/plan.md](docs/plan.md); the domain terms are in
-[GLOSSARY.md](GLOSSARY.md). See [CONTRIBUTING.md](CONTRIBUTING.md) to work on
-it.
+It covers the Alpha 1.0 protocol: TEXT and STRING Files with Modes, colors,
+fonts, and live time, date, and STRING values; the Priority TEXT File; Memory
+Configuration and scheduling; the clock; tones; reads; and finding Signs on a
+network. Every byte sequence is tested against the worked examples in Alpha's
+protocol manual.
+
+## Example
+
+```python
+from datetime import datetime
+
+from alpha_led_sign import (
+    Color, CurrentTime, Frame, Message, Mode, Position, Sign, StringFile, StringRef,
+    TextFile, models,
+)
+
+with Sign.serial("/dev/tty.usbserial-1410", model=models.ALPHA_4120C) as sign:
+    sign.show("Hello")  # TEXT File "A"
+
+    # Writing the Memory Configuration erases every File on the Sign.
+    sign.configure_memory([TextFile("A", size=512), StringFile("T", size=16)])
+    sign.write_text("A", Message(
+        Frame(Mode.ROTATE, Position.TOP, [Color.RED, "Temp: ", StringRef("T")]),
+        Frame(Mode.HOLD, Position.BOTTOM, [Color.GREEN, CurrentTime()]),
+    ))
+    sign.write_string("T", "72F")  # updates without blanking the display
+    sign.set_clock(datetime.now())
+
+    sign.priority(Frame(Mode.FLASH, content=["EMERGENCY"]))
+    sign.clear_priority()
+```
+
+`Sign.serial` accepts any [pyserial URL](https://pyserial.readthedocs.io/en/latest/url_handlers.html),
+including `socket://host:port` for a serial-to-TCP bridge. The default line
+settings are 9600 baud, 8N1; pass `serial_format=SerialFormat.SEVEN_E_TWO` for
+7E2.
+
+## Sign Models
+
+A Sign Model profile (`models.ALPHA_4120C`, the rest of the 4000 Series,
+`models.BETABRITE`) gives the Sign Type to address and the Capabilities from
+the manual's tables. Content a model lacks raises a warning, or
+`UnsupportedCapability` with `Sign(..., strict=True)`. `models.GENERIC` works
+with any Alpha sign and checks only the Protocol Version.
+
+## Reading and discovery
+
+```python
+sign.read_text("A")         # -> Message
+sign.read_string("T")       # -> ("72F",)
+sign.info()                 # firmware, clock, memory
+sign.serial_errors().ok     # did the last Packets arrive intact?
+
+from alpha_led_sign import discover
+discover(sign.transport, max_address=15)  # Signs and their Sign Addresses
+```
+
+Discovery waits 1 s plus 0.5 s for each address searched, because each Sign
+answers in turn. Lower `max_address` when the addresses are known to be small.
+
+## Status
+
+The offline tests pass, but the library has not yet been run against a real sign.
+`docs/plan.md` (Phase 8) lists what still needs hardware confirmation. To run
+the hardware tests:
+
+```sh
+ALPHA_SIGN_PORT=/dev/tty.usbserial-1410 uv run pytest -m hardware
+```
+
+The design and delivery plan are in [docs/plan.md](docs/plan.md); the domain
+terms are in [GLOSSARY.md](GLOSSARY.md). See
+[CONTRIBUTING.md](CONTRIBUTING.md) to work on it.

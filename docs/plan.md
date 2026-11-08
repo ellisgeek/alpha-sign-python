@@ -83,8 +83,14 @@ Each phase is a red-green loop at the agreed seams. No phase starts its tests un
 4. **Special functions.** Time, date, weekday, time format, Memory Configuration, clear memory, soft reset, Run Time, Run Sequence, Run Day, speaker, tones, serial address.
 5. **STRING Files.** Write and the 125-byte limit.
 6. **Transport and `Sign`.** SerialTransport (9600 8N1 default, 7E2 option), pause handling.
-7. **Reads.** Read TEXT, read STRING, General Information, Serial Error Status Register.
-8. **Hardware bring-up.** Opt-in `pytest -m hardware` against the real 4120C via `ALPHA_SIGN_PORT`. A checklist of manual-vs-hardware differences feeds back into the model profile.
+7. **Reads.** Read TEXT, read STRING, General Information, Serial Error Status Register. **Sign Address discovery** with a broadcast Network Query (`F-`, p. 32): each Sign answers 1 s + 0.5 s × its address later, so `discover()` waits for the highest address searched.
+8. **Hardware bring-up.** Opt-in `pytest -m hardware` against the real 4120C via `ALPHA_SIGN_PORT`. A checklist of manual-vs-hardware differences feeds back into the model profile. Items to check, found while building Phases 1-7:
+   - Network Query answers: the manual gives only the `UAAZ` data. The library assumes each arrives as a Response Packet (`E-UAAZ` with a checksum), like other SPECIAL FUNCTION reads.
+   - General Information: the manual says 28 or 29 characters, but its field list adds up to 29 plus an optional NUL.
+   - Programmable tones: whether `R` (repeats) counts the first play. The library waits for `R + 1` plays.
+   - Table 66 gives NEWS FLASH and TRUMPET as `"A"`/`"B"` with hex 3AH/3BH. The library sends the letters.
+   - Table 69/70 gaps for the 4000 Series (no NEW_PAGE, no double height): confirm before relying on strict mode.
+   - Per-file overhead: the manual says 11 bytes, readerboard reports 13.
 
 Later, out of scope for the prototype: an ESPHome Wi-Fi bridge transport, DOTS PICTURE files, counters, Alpha 2.0/3.0 additions, ASCII Printable formats, extended characters beyond a basic mapping.
 
