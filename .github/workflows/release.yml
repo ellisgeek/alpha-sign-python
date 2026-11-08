@@ -1,0 +1,59 @@
+name: Release
+
+# Publishes a GitHub release when a SemVer tag is pushed. Cut the release
+# locally first with scripts/release.sh (bump, changelog, commit, tag), then
+# push the commit and the tag.
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # full history and tags for git-cliff
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Check tag matches the package version
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if ! [[ "$tag" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Tag '$tag' is not SemVer MAJOR.MINOR.PATCH (e.g. 0.1.0)"
+            exit 1
+          fi
+          version="$(uv version --short)"
+          if [[ "$version" != "$tag" ]]; then
+            echo "::error::Tag '$tag' does not match pyproject.toml version '$version'; cut releases with scripts/release.sh"
+            exit 1
+          fi
+
+      - run: uv sync --locked --group dev
+
+      - name: Check
+        run: |
+          uv run prek run --all-files --show-diff-on-failure
+          uv run pytest -q
+
+      - name: Release notes
+        run: uv run git-cliff --current --strip all --output "$RUNNER_TEMP/notes.md"
+
+      - name: Build
+        run: uv build
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag

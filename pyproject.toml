@@ -1,0 +1,111 @@
+[project]
+name = "alpha-led-sign"
+version = "0.1.0"
+description = "Typed Python control for Alpha-protocol LED message signs"
+readme = "README.md"
+authors = [
+    { name = "Syne Ardwin", email = "syne@syne.tel" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pyserial>=3.5",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.12,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "git-cliff>=2.14.2",
+    "prek>=0.5.10",
+    "pytest>=9.2.0",
+    "ruff>=0.17.4",
+    "ty>=0.0.99",
+    "types-pyserial>=3.5.0.20261104",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "PT", "N", "C4", "PIE", "RET", "TC"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "-m", "not hardware"]
+markers = ["hardware: needs a real sign; set ALPHA_SIGN_PORT and run with -m hardware"]
+
+[tool.ty.src]
+exclude = ["docs"]
+
+[tool.git-cliff.bump]
+# SemVer (docs/adr/0001-semantic-versioning.md). `just release` asks for the
+# next version with `git-cliff --bumped-version`. Before 1.0 a breaking change
+# bumps the minor number and anything else the patch; from 1.0, breaking
+# changes bump the major number and features the minor.
+features_always_bump_minor = false
+breaking_always_bump_major = false
+initial_tag = "0.1.0"
+
+[tool.git-cliff.changelog]
+# Keep a Changelog 1.1.0 (https://keepachangelog.com/en/1.1.0/), generated from
+# Conventional Commits. Only user-facing changes are listed; docs, test, build,
+# ci, and refactor commits are left out unless marked breaking. A breaking
+# change's BREAKING CHANGE footer is printed under its entry, to tell users
+# what to do.
+header = """# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
+(see [ADR 0001](docs/adr/0001-semantic-versioning.md)).
+"""
+body = """
+{% if version -%}
+## [{{ version }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## [Unreleased]
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {% if commit.breaking %}**Breaking:** {% endif %}{{ commit.message | split(pat="\n") | first | trim | upper_first }}\
+{% if commit.breaking and commit.breaking_description and commit.breaking_description | trim != commit.message | split(pat="\n") | first | trim %}
+  - {{ commit.breaking_description | trim | upper_first }}\
+{% endif %}\
+{% endfor %}
+{% endfor %}
+"""
+trim = false
+
+[tool.git-cliff.git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+# Breaking changes are always listed, even for commit types that are skipped.
+protect_breaking_commits = true
+filter_commits = false
+tag_pattern = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+sort_commits = "oldest"
+# First match wins. HTML comments only order the sections.
+commit_parsers = [
+    { message = "^build\\(release\\)", skip = true },
+    { message = "^fix\\(security\\)", group = "<!-- 5 -->Security" },
+    { message = "^(feat|fix|perf)(\\(.*\\))?!?: [Dd]eprecate", group = "<!-- 2 -->Deprecated" },
+    { message = "^(feat|fix|perf)(\\(.*\\))?!?: ([Rr]emove|[Dd]rop)", group = "<!-- 3 -->Removed" },
+    { message = "^feat", group = "<!-- 0 -->Added" },
+    { message = "^perf", group = "<!-- 1 -->Changed" },
+    { message = "^fix", group = "<!-- 4 -->Fixed" },
+    { field = "breaking", pattern = "true", group = "<!-- 1 -->Changed" },
+    { message = ".*", skip = true },
+]
