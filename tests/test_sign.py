@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from alpha_led_sign import Sign, models
+from alpha_led_sign import Sign, SignTimeoutError, models
 from alpha_led_sign.models import UnsupportedCapability, UnsupportedCapabilityWarning
 from alpha_led_sign.protocol.codes import Color, Font, Mode, Position, StringRef
 from alpha_led_sign.protocol.commands import TimeFormat, Tone
@@ -171,3 +171,36 @@ def test_the_api_sketch_in_the_plan_runs() -> None:
         sign.clear_priority()
 
     assert transport.written.count(SYNC) == 7
+
+
+NULS = b"\x00" * 20
+
+
+def test_read_text_sends_the_read_then_parses_the_response() -> None:
+    transport = FakeTransport(responses=[NULS + b"\x01000\x02ACFI", b"LE C\x03020C\x04"])
+    sign = Sign(transport, address=6, checksum=False)
+
+    message = sign.read_text("C")
+
+    assert transport.written == SYNC + b"\x01Z06\x02BC\x04"  # Table 45
+    assert message == Message(Frame(None, content="FILE C"))  # Table 46
+
+
+def test_read_string_and_serial_errors() -> None:
+    transport = FakeTransport(
+        responses=[
+            NULS + b"\x01000\x02G28,234,000\x030237\x04",  # Table 59
+            NULS + b"\x01000\x02E*@\x03" + b"00B4" + b"\x04",
+        ]
+    )
+    sign = Sign(transport)
+
+    assert sign.read_string("2") == ("8,234,000",)
+    assert sign.serial_errors().ok
+
+
+def test_a_sign_that_does_not_answer_raises_sign_timeout() -> None:
+    transport = FakeTransport(responses=[NULS + b"\x01000\x02ACFI"])
+
+    with pytest.raises(SignTimeoutError):
+        Sign(transport).read_text("C")

@@ -13,6 +13,13 @@ from alpha_led_sign.protocol.commands import (
     Beep,
     ClearMemory,
     Command,
+    GeneralInformation,
+    Read,
+    ReadGeneralInformation,
+    ReadSerialErrorStatus,
+    ReadString,
+    ReadText,
+    SerialErrorStatus,
     SetDate,
     SetDayOfWeek,
     SetMemoryConfiguration,
@@ -28,8 +35,16 @@ from alpha_led_sign.protocol.commands import (
 )
 from alpha_led_sign.protocol.memory import MemoryFile
 from alpha_led_sign.protocol.message import Frame, Message, Segment
-from alpha_led_sign.protocol.packet import Packet, Recipient, encode_packet
+from alpha_led_sign.protocol.packet import EOT, Packet, Recipient, decode_response, encode_packet
 from alpha_led_sign.transport import SerialFormat, SerialTransport, Transport
+
+DEFAULT_READ_TIMEOUT = 2.0
+"""Seconds to wait for each part of a Response before giving up."""
+
+
+class SignTimeoutError(TimeoutError):
+    """The Sign stopped answering before its Response was complete."""
+
 
 DEFAULT_LABEL = "A"
 """The TEXT File every Sign has at power-up (p. 17)."""
@@ -46,8 +61,10 @@ class Sign:
         address: int | str = 0,
         strict: bool = False,
         checksum: bool = True,
+        read_timeout: float = DEFAULT_READ_TIMEOUT,
     ) -> None:
         self.transport = transport
+        self.read_timeout = read_timeout
         self.model = model
         self.recipient = Recipient(model.sign_type, address)
         self.strict = strict
@@ -145,6 +162,39 @@ class Sign:
     def beep(self, tone: Tone = Tone.THREE_BEEPS) -> None:
         """Sound a built-in tone. The Sign can't take data for about 3 s afterwards."""
         self.send(Beep(tone))
+
+    def read_text(self, label: str = DEFAULT_LABEL) -> Message:
+        """Read TEXT File ``label`` back. The display pauses while the Sign answers."""
+        return self.query(ReadText(label))
+
+    def read_string(self, label: str) -> tuple[Segment, ...]:
+        """Read STRING File ``label`` back: its text and Control Codes."""
+        return self.query(ReadString(label))
+
+    def info(self) -> GeneralInformation:
+        """Read firmware, clock, speaker, and memory details."""
+        return self.query(ReadGeneralInformation())
+
+    def serial_errors(self) -> SerialErrorStatus:
+        """Read the errors recorded since the last read. Reading resets the register."""
+        return self.query(ReadSerialErrorStatus())
+
+    def query[T](self, read: Read[T]) -> T:
+        """Send one Read Command and parse the Sign's Response.
+
+        Use one Sign Address per Sign: only the addressed Sign may answer.
+        """
+        self.send(read)
+        return read.parse(decode_response(self._receive()))
+
+    def _receive(self) -> bytes:
+        received = b""
+        while EOT not in received:
+            data = self.transport.read(self.read_timeout)
+            if not data:
+                raise SignTimeoutError(f"no complete Response after {received!r}")
+            received += data
+        return received[: received.index(EOT) + 1]
 
     def send(self, *commands: Command) -> None:
         """Validate ``commands`` against the model and send them in one Packet."""

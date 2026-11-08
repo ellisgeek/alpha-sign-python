@@ -36,7 +36,7 @@ from alpha_led_sign.protocol.memory import (
     TextFile,
 )
 from alpha_led_sign.protocol.message import Frame, Message
-from alpha_led_sign.sign import Sign
+from alpha_led_sign.sign import Sign, SignTimeoutError
 from alpha_led_sign.transport import SerialFormat, SerialTransport, Transport
 
 __all__ = [
@@ -61,6 +61,7 @@ __all__ = [
     "SerialTransport",
     "Sign",
     "SignModel",
+    "SignTimeoutError",
     "Spacing",
     "SpecialGraphic",
     "SpecialMode",

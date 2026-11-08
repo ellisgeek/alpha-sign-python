@@ -10,7 +10,15 @@ from typing import ClassVar
 from alpha_led_sign.protocol.codes import Color, Control, CurrentTime, Font, Spacing, Speed, Wide
 from alpha_led_sign.protocol.labels import check_file_label
 from alpha_led_sign.protocol.memory import MemoryFile, RunTime
-from alpha_led_sign.protocol.message import Message, Segment, encode_content, normalize_content
+from alpha_led_sign.protocol.message import (
+    Message,
+    Segment,
+    decode_content,
+    decode_message,
+    encode_content,
+    normalize_content,
+)
+from alpha_led_sign.protocol.response import ResponseError, ResponseItem
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
 
@@ -434,3 +442,177 @@ class WriteString(Command):
 
     def codes(self) -> Iterable[object]:
         return (segment for segment in self.content if not isinstance(segment, str))
+
+
+class Read[T](Command):
+    """A Command that asks the Sign for data. It must be the last Command in a Packet."""
+
+    must_be_last: ClassVar[bool] = True
+
+    @abstractmethod
+    def parse(self, response: Sequence[ResponseItem]) -> T:
+        """Turn the decoded Response into a value."""
+
+
+def _find(response: Sequence[ResponseItem], code: str, prefix: str, what: str) -> bytes:
+    """The data after ``prefix`` in the Response Command with ``code``."""
+    for item in response:
+        if item.code == code and item.data.startswith(prefix.encode("ascii")):
+            return item.data[len(prefix) :]
+    raise ResponseError(f"the Response does not contain {what}: {response!r}")
+
+
+@dataclass(frozen=True)
+class ReadText(Read[Message]):
+    """Read a TEXT File back as a Message (p. 19). The Sign answers with a Write TEXT."""
+
+    code: ClassVar[str] = "B"
+    label: str
+
+    def __post_init__(self) -> None:
+        check_file_label(self.label)
+
+    def encode_data(self) -> bytes:
+        return self.label.encode("ascii")
+
+    def parse(self, response: Sequence[ResponseItem]) -> Message:
+        return decode_message(_find(response, "A", self.label, f"TEXT File {self.label}"))
+
+
+@dataclass(frozen=True)
+class ReadString(Read[tuple[Segment, ...]]):
+    """Read a STRING File's content (p. 38). The Sign answers with a Write STRING."""
+
+    code: ClassVar[str] = "H"
+    label: str
+
+    def __post_init__(self) -> None:
+        check_file_label(self.label)
+
+    def encode_data(self) -> bytes:
+        return self.label.encode("ascii")
+
+    def parse(self, response: Sequence[ResponseItem]) -> tuple[Segment, ...]:
+        return decode_content(_find(response, "G", self.label, f"STRING File {self.label}"))
+
+
+class ReadSpecial[T](Read[T]):
+    """A Read SPECIAL FUNCTION Command (Table 16, p. 29). The Sign answers with an "E"."""
+
+    code: ClassVar[str] = "F"
+    label: ClassVar[str]
+
+    def encode_data(self) -> bytes:
+        return self.label.encode("ascii")
+
+    def _data(self, response: Sequence[ResponseItem]) -> bytes:
+        return _find(response, "E", self.label, f"SPECIAL FUNCTION {self.label!r}")
+
+
+@dataclass(frozen=True)
+class ReadDayOfWeek(ReadSpecial[Weekday]):
+    """Read the Sign's day of the week ("&", p. 30)."""
+
+    label: ClassVar[str] = "&"
+
+    def parse(self, response: Sequence[ResponseItem]) -> Weekday:
+        return Weekday(self._data(response).decode("ascii"))
+
+
+@dataclass(frozen=True)
+class SerialErrorStatus:
+    """The Serial Error Status Register (p. 31): errors since it was last cleared."""
+
+    illegal_command: bool = False
+    """An illegal Command Code, File Label, or SPECIAL FUNCTION."""
+    checksum_error: bool = False
+    buffer_overflow: bool = False
+    timeout: bool = False
+    framing_error: bool = False
+    """Usually a baud rate mismatch."""
+    parity_error: bool = False
+    """Not used on most Signs."""
+
+    @classmethod
+    def decode(cls, bits: int) -> "SerialErrorStatus":
+        """Decode the register byte (p. 31). Bit 6 is always set; bits 5-0 are errors."""
+        return cls(
+            illegal_command=bool(bits & 0x20),
+            checksum_error=bool(bits & 0x10),
+            buffer_overflow=bool(bits & 0x08),
+            timeout=bool(bits & 0x04),
+            framing_error=bool(bits & 0x02),
+            parity_error=bool(bits & 0x01),
+        )
+
+    @property
+    def ok(self) -> bool:
+        """True if no error has been recorded."""
+        return not any(
+            (
+                self.illegal_command,
+                self.checksum_error,
+                self.buffer_overflow,
+                self.timeout,
+                self.framing_error,
+                self.parity_error,
+            )
+        )
+
+
+@dataclass(frozen=True)
+class ReadSerialErrorStatus(ReadSpecial[SerialErrorStatus]):
+    """Read and reset the Serial Error Status Register ("*", p. 31)."""
+
+    label: ClassVar[str] = "*"
+
+    def parse(self, response: Sequence[ResponseItem]) -> SerialErrorStatus:
+        data = self._data(response)
+        if len(data) != 1:
+            raise ResponseError(f"expected one Serial Error Status byte, got {data!r}")
+        return SerialErrorStatus.decode(data[0])
+
+
+@dataclass(frozen=True)
+class GeneralInformation:
+    """What Read General Information reports (p. 29). Mostly useful for troubleshooting."""
+
+    firmware: str
+    revision: str
+    firmware_date: str
+    """Release month and two-digit year, as "MMYY"."""
+    time: time
+    time_format: TimeFormat
+    speaker_enabled: bool
+    memory_total: int
+    """Size of the Memory Pool in bytes."""
+    memory_free: int
+    """Unused part of the Memory Pool in bytes."""
+
+
+_GENERAL_INFORMATION_LENGTH = 29  # FFFFFFFF f MmYy HhNn R SS POOL,pool
+
+
+@dataclass(frozen=True)
+class ReadGeneralInformation(ReadSpecial[GeneralInformation]):
+    """Read firmware, clock, speaker, and memory details ('"', p. 29)."""
+
+    label: ClassVar[str] = '"'
+
+    def parse(self, response: Sequence[ResponseItem]) -> GeneralInformation:
+        data = self._data(response)
+        if data.startswith(b"\x00"):  # p. 29 note 1: only some Signs send it
+            data = data[1:]
+        text = data.decode("ascii", errors="replace")
+        if len(text) != _GENERAL_INFORMATION_LENGTH or text[24] != ",":
+            raise ResponseError(f"unexpected General Information format: {data!r}")
+        return GeneralInformation(
+            firmware=text[0:8],
+            revision=text[8],
+            firmware_date=text[9:13],
+            time=time(int(text[13:15]), int(text[15:17])),
+            time_format=TimeFormat(text[17]),
+            speaker_enabled=text[18:20] == "00",
+            memory_total=int(text[20:24], 16),
+            memory_free=int(text[25:29], 16),
+        )
