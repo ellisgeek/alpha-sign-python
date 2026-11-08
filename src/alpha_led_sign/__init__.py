@@ -5,6 +5,7 @@ format lives in ``alpha_led_sign.protocol``; Sign Model profiles live in ``model
 """
 
 from alpha_led_sign import models
+from alpha_led_sign.discovery import DiscoveredSign, discover
 from alpha_led_sign.models import SignModel, UnsupportedCapability, UnsupportedCapabilityWarning
 from alpha_led_sign.protocol.codes import (
     Attribute,
@@ -48,6 +49,7 @@ __all__ = [
     "CurrentDate",
     "CurrentTime",
     "DateFormat",
+    "DiscoveredSign",
     "DotsPictureFile",
     "DoubleHigh",
     "Font",
@@ -76,5 +78,6 @@ __all__ = [
     "UnsupportedCapability",
     "UnsupportedCapabilityWarning",
     "Wide",
+    "discover",
     "models",
 ]

@@ -616,3 +616,33 @@ class ReadGeneralInformation(ReadSpecial[GeneralInformation]):
             memory_total=int(text[20:24], 16),
             memory_free=int(text[25:29], 16),
         )
+
+
+@dataclass(frozen=True)
+class NetworkQueryReply:
+    """One Sign's answer to a Network Query (p. 32)."""
+
+    sign_type: str
+    address: int
+    errors: SerialErrorStatus
+
+
+@dataclass(frozen=True)
+class NetworkQuery(ReadSpecial[NetworkQueryReply]):
+    """Ask every Sign for its Sign Type, Sign Address, and serial errors ("-", p. 32).
+
+    Broadcast it to address 0. Each Sign answers 1 s + 0.5 s x its address after the
+    EOT, so one Packet brings many Responses; ``parse`` reads one of them.
+    """
+
+    label: ClassVar[str] = "-"
+
+    def parse(self, response: Sequence[ResponseItem]) -> NetworkQueryReply:
+        data = self._data(response)
+        if len(data) != 4:
+            raise ResponseError(f"expected a 4-byte Network Query answer, got {data!r}")
+        try:
+            address = int(data[1:3].decode("ascii"), 16)
+        except ValueError:
+            raise ResponseError(f"bad Sign Address in Network Query answer {data!r}") from None
+        return NetworkQueryReply(chr(data[0]), address, SerialErrorStatus.decode(data[3]))

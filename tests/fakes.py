@@ -10,6 +10,7 @@ class FakeTransport:
     events: list[tuple[str, bytes | float]] = field(default_factory=list)
     responses: list[bytes] = field(default_factory=list)
     closed: bool = False
+    read_timeouts: list[float] = field(default_factory=list)
 
     def write(self, data: bytes) -> None:
         self.events.append(("write", data))
@@ -18,6 +19,7 @@ class FakeTransport:
         self.events.append(("pause", seconds))
 
     def read(self, timeout: float) -> bytes:
+        self.read_timeouts.append(timeout)
         return self.responses.pop(0) if self.responses else b""
 
     def close(self) -> None:
