@@ -89,8 +89,11 @@ def test_nested_commands_pause_100ms_after_each_stx() -> None:
 class RawTone(RawSpecial):
     """Stands in for a speaker tone, which needs 3 s of silence after it (p. 27, note 4)."""
 
-    pause_after: ClassVar[float] = 3.0
     must_be_last: ClassVar[bool] = True
+
+    @property
+    def pause_after(self) -> float:
+        return 3.0
 
 
 def test_command_pause_follows_the_end_of_the_packet() -> None:
