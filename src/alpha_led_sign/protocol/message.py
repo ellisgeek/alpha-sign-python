@@ -20,15 +20,8 @@ class Frame:
     content: Sequence[Segment] = field(default=())
 
     def __post_init__(self) -> None:
-        # A lone string is one segment, not a sequence of one-character segments.
-        content = (self.content,) if isinstance(self.content, str) else tuple(self.content)
+        content = normalize_content(self.content)
         object.__setattr__(self, "content", content)
-        for segment in content:
-            if isinstance(segment, str) and not _is_displayable(segment):
-                raise ValueError(
-                    f"literal text must be printable ASCII (20H-7FH), got {segment!r}; "
-                    "use Control Codes such as Control.NEW_LINE for layout"
-                )
         if isinstance(self.mode, SpecialGraphic) and content:
             raise ValueError(
                 "a Frame with a Special Graphic cannot show text; put it in the next Frame"
@@ -42,7 +35,7 @@ class Frame:
 
     def encode(self) -> bytes:
         mode_field = ESC + (self.position.value + self.mode.field).encode("ascii")
-        return mode_field + b"".join(_encode_segment(segment) for segment in self.content)
+        return mode_field + encode_content(self.content)
 
 
 @dataclass(frozen=True, init=False)
@@ -63,10 +56,27 @@ class Message:
         return b"".join(frame.encode() for frame in self.frames)
 
 
-def _encode_segment(segment: Segment) -> bytes:
-    if isinstance(segment, str):
-        return segment.encode("ascii")
-    return segment.encode()
+def normalize_content(content: str | Sequence[Segment]) -> tuple[Segment, ...]:
+    """Turn content into a tuple of segments, checking that literal text is displayable.
+
+    A lone string is one segment, not a sequence of one-character segments.
+    """
+    segments = (content,) if isinstance(content, str) else tuple(content)
+    for segment in segments:
+        if isinstance(segment, str) and not _is_displayable(segment):
+            raise ValueError(
+                f"literal text must be printable ASCII (20H-7FH), got {segment!r}; "
+                "use Control Codes such as Control.NEW_LINE for layout"
+            )
+    return segments
+
+
+def encode_content(segments: Sequence[Segment]) -> bytes:
+    """Encode literal text and Control Codes, in order."""
+    return b"".join(
+        segment.encode("ascii") if isinstance(segment, str) else segment.encode()
+        for segment in segments
+    )
 
 
 def _is_displayable(text: str) -> bool:

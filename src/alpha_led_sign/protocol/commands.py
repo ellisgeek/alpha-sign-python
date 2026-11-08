@@ -7,9 +7,10 @@ from datetime import date, time
 from enum import Enum
 from typing import ClassVar
 
+from alpha_led_sign.protocol.codes import Color, Control, CurrentTime, Font, Spacing, Speed, Wide
 from alpha_led_sign.protocol.labels import check_file_label
 from alpha_led_sign.protocol.memory import MemoryFile, RunTime
-from alpha_led_sign.protocol.message import Message
+from alpha_led_sign.protocol.message import Message, Segment, encode_content, normalize_content
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
 
@@ -391,3 +392,45 @@ class SetSerialAddress(SpecialFunction):
 
     def encode_payload(self) -> bytes:
         return f"{self.address:02X}".encode("ascii")
+
+
+STRING_MAX_BYTES = 125
+"""STRING File data is buffered, so it is limited to 125 bytes (p. 37)."""
+
+
+def _allowed_in_string(segment: Segment) -> bool:
+    """Table 19, p. 37: the Control Codes a STRING File may contain."""
+    match segment:
+        case str() | Speed() | Wide() | CurrentTime() | Font() | Spacing() | Control.NEW_LINE:
+            return True
+        case Color():
+            return segment not in (Color.RAINBOW_1, Color.RAINBOW_2)
+        case _:
+            return False
+
+
+@dataclass(frozen=True, init=False)
+class WriteString(Command):
+    """Write a STRING File (p. 37). Unlike a TEXT File write, the display does not blank."""
+
+    code: ClassVar[str] = "G"
+    label: str
+    content: tuple[Segment, ...]
+
+    def __init__(self, label: str, content: str | Sequence[Segment]) -> None:
+        check_file_label(label)
+        segments = normalize_content(content)
+        for segment in segments:
+            if not _allowed_in_string(segment):
+                raise ValueError(f"{segment!r} cannot be used in a STRING File (Table 19, p. 37)")
+        object.__setattr__(self, "label", label)
+        object.__setattr__(self, "content", segments)
+        size = len(encode_content(segments))
+        if size > STRING_MAX_BYTES:
+            raise ValueError(f"STRING File data is at most {STRING_MAX_BYTES} bytes, got {size}")
+
+    def encode_data(self) -> bytes:
+        return self.label.encode("ascii") + encode_content(self.content)
+
+    def codes(self) -> Iterable[object]:
+        return (segment for segment in self.content if not isinstance(segment, str))

@@ -24,7 +24,7 @@ from alpha_led_sign.protocol.codes import (
     SpecialMode,
     StringRef,
 )
-from alpha_led_sign.protocol.commands import WriteText
+from alpha_led_sign.protocol.commands import WriteString, WriteText
 from alpha_led_sign.protocol.message import Frame, Message
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
@@ -172,3 +172,8 @@ def test_generic_model_does_not_check_capabilities() -> None:
     command = write(Frame(Mode.COMPRESSED_ROTATE, Position.FILL, [DoubleHigh(), "hi"]))
 
     validate(models.GENERIC, [command], strict=True)
+
+
+def test_string_file_content_is_validated_too() -> None:
+    with pytest.raises(UnsupportedCapability, match="color"):
+        validate(models.ALPHA_4120R, [WriteString("T", [Color.GREEN, "72"])], strict=True)
