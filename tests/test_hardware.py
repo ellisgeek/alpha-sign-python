@@ -1,6 +1,11 @@
-"""Smoke tests against a real Sign. Opt-in: they never run in CI.
+"""Smoke tests against a real Sign. Opt-in: they never run against a real Sign in CI.
 
     ALPHA_SIGN_PORT=/dev/tty.usbserial-1410 uv run pytest -m hardware
+
+The same tests run against the emulator (Node and ``npm ci`` in emulator/), which
+needs no settings. Erase and re-address tests run there without their opt-in flags:
+
+    uv run pytest -m emulator
 
 Optional settings:
 
@@ -64,9 +69,11 @@ from alpha_led_sign.protocol.commands import (
 from alpha_led_sign.protocol.memory import MemoryFile
 from alpha_led_sign.protocol.message import Segment
 from alpha_led_sign.protocol.requirements import Capability
+from tests import emulator
+from tests.conftest import EMULATED_SIGN
 from tests.recording import RecordingTransport
 
-pytestmark = pytest.mark.hardware
+pytestmark = [pytest.mark.hardware, pytest.mark.emulator]
 
 
 def _flag(name: str) -> bool:
@@ -85,28 +92,43 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
+        env = dict(os.environ)
+        if EMULATED:
+            # The emulator fixture sets ALPHA_SIGN_PORT and powers up EMULATED_SIGN.
+            env |= {
+                "ALPHA_SIGN_MODEL": EMULATED_SIGN.model,
+                "ALPHA_SIGN_ADDRESS": str(EMULATED_SIGN.sign_address),
+            }
+            env |= {"ALPHA_SIGN_BAUD": "9600", "ALPHA_SIGN_FORMAT": "8N1"}
         formats = {"8N1": SerialFormat.EIGHT_N_ONE, "7E2": SerialFormat.SEVEN_E_TWO}
         return cls(
-            port=os.environ.get("ALPHA_SIGN_PORT"),
-            model=models.get(os.environ.get("ALPHA_SIGN_MODEL", "4120C")),
-            address=int(os.environ.get("ALPHA_SIGN_ADDRESS", "0")),
-            baudrate=int(os.environ.get("ALPHA_SIGN_BAUD", "9600")),
-            serial_format=formats[os.environ.get("ALPHA_SIGN_FORMAT", "8N1")],
+            port=env.get("ALPHA_SIGN_PORT"),
+            model=models.get(env.get("ALPHA_SIGN_MODEL", "4120C")),
+            address=int(env.get("ALPHA_SIGN_ADDRESS", "0")),
+            baudrate=int(env.get("ALPHA_SIGN_BAUD", "9600")),
+            serial_format=formats[env.get("ALPHA_SIGN_FORMAT", "8N1")],
         )
 
 
+# True for `-m emulator` (tests/conftest.py sets it before this module is collected).
+EMULATED = emulator.selected
 SETTINGS = Settings.from_env()
 CAPTURE_PATH = os.environ.get("ALPHA_SIGN_CAPTURE")
 
 needs_erase = pytest.mark.skipif(
-    not _flag("ALPHA_SIGN_ALLOW_ERASE"), reason="set ALPHA_SIGN_ALLOW_ERASE=1"
+    not EMULATED and not _flag("ALPHA_SIGN_ALLOW_ERASE"), reason="set ALPHA_SIGN_ALLOW_ERASE=1"
 )
 needs_readdress = pytest.mark.skipif(
-    not _flag("ALPHA_SIGN_ALLOW_READDRESS") or SETTINGS.address == 0,
+    not EMULATED and (not _flag("ALPHA_SIGN_ALLOW_READDRESS") or SETTINGS.address == 0),
     reason="set ALPHA_SIGN_ALLOW_READDRESS=1 and ALPHA_SIGN_ADDRESS to the Sign's address",
 )
-needs_witness = pytest.mark.skipif(
-    not _flag("ALPHA_SIGN_WITNESS"), reason="set ALPHA_SIGN_WITNESS=1"
+needs_witness = (
+    pytest.mark.skip(reason="witnessed tests need a person watching a real Sign, not the emulator")
+    if EMULATED
+    else pytest.mark.skipif(not _flag("ALPHA_SIGN_WITNESS"), reason="set ALPHA_SIGN_WITNESS=1")
+)
+needs_network_query = pytest.mark.skipif(
+    EMULATED, reason="the emulator does not answer Network Query yet (deferred past its MVP)"
 )
 
 
@@ -149,9 +171,11 @@ def captures() -> Iterator[Captures]:
 @pytest.fixture
 def open_sign(request: pytest.FixtureRequest, captures: Captures) -> Iterator[Callable[[], Sign]]:
     """Open the Sign from the settings, recording its traffic under this test's name."""
-    if not SETTINGS.port:
+    if EMULATED:
+        request.getfixturevalue("emulated_sign")
+    port = os.environ.get("ALPHA_SIGN_PORT")
+    if not port:
         pytest.skip("set ALPHA_SIGN_PORT to the Sign's serial port")
-    port = SETTINGS.port
     opened: list[Sign] = []
 
     def opener() -> Sign:
@@ -256,6 +280,7 @@ def test_beep_then_more_data(sign: Sign) -> None:
     assert sign.serial_errors().ok
 
 
+@needs_network_query
 def test_discovery_finds_this_sign(sign: Sign) -> None:
     # Checklist: the format of Network Query answers (`E-UAAZ`, assumed a Response Packet).
     found = discover(sign.transport, max_address=max(SETTINGS.address, 1))
@@ -263,6 +288,7 @@ def test_discovery_finds_this_sign(sign: Sign) -> None:
     assert SETTINGS.address in [answer.address for answer in found]
 
 
+@needs_network_query
 @needs_readdress
 def test_network_query_answers_at_a_second_sign_address(sign: Sign) -> None:
     # Captures a second answer for the discovery tests (p. 26, p. 32).

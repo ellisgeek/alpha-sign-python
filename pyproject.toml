@@ -21,6 +21,7 @@ dev = [
     "prek>=0.5.10",
     "pytest>=9.2.0",
     "ruff>=0.17.4",
+    "rust-just>=1.59.0",
     "ty>=0.0.99",
     "types-pyserial>=3.5.0.20261104",
 ]
@@ -44,6 +45,7 @@ testpaths = ["tests"]
 addopts = ["--strict-markers", "-m", "not hardware"]
 markers = [
     "hardware: needs a real sign; set ALPHA_SIGN_PORT and run with -m hardware",
+    "emulator: runs the hardware tests against the emulator; needs Node and npm ci in emulator/",
     "witness: asks the person watching the sign; set ALPHA_SIGN_WITNESS=1 and run with -m witness -s",
 ]
 

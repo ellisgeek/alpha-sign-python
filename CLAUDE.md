@@ -30,3 +30,21 @@ Releases: SemVer `MAJOR.MINOR.PATCH` (e.g. `0.1.0`, no `v` prefix; ADR 0001).
 commits, and tags locally; pushing the tag triggers the Release workflow,
 which publishes. Never edit versions by hand. Never push, tag, or publish a
 release unless asked.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as local markdown files under `.scratch/<feature>/` (no remote
+yet). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default label strings (`needs-triage`, `needs-info`,
+`ready-for-agent`, `ready-for-human`, `wontfix`). See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See
+`docs/agents/domain.md`.

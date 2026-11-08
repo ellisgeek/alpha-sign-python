@@ -55,6 +55,19 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+      # The emulator is its own npm project; run `npm ci` in emulator/ first.
+      - id: emulator-biome
+        name: emulator biome check
+        entry: npm --prefix emulator run --silent lint
+        language: system
+        files: ^emulator/
+        pass_filenames: false
+      - id: emulator-tsc
+        name: emulator type check
+        entry: npm --prefix emulator run --silent typecheck
+        language: system
+        files: ^emulator/
+        pass_filenames: false
       - id: pytest
         name: pytest
         entry: uv run --frozen pytest -q

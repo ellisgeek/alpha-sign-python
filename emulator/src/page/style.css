@@ -1,0 +1,267 @@
+/* A bench page: plain light chrome, and the Sign as the one dark object on it.
+   Atkinson Hyperlegible keeps 0/O and 1/l/I apart, which File Labels and hex need. */
+:root {
+  --ground: #f1f2f2;
+  --ink: #17191b;
+  --ink-2: #4a5056;
+  --rule: #c3c8cc;
+  --rule-soft: #dde0e2;
+  --case: #232120;
+  --case-edge: #3a3734;
+  --control: #0b57d0;
+  --fault: #a3260f;
+  --lit: #2aff3a;
+  --font: "Atkinson Hyperlegible Next", "Segoe UI", sans-serif;
+  --mono: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 14px / 1.4 var(--font);
+}
+
+.num,
+.bytes,
+output {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--rule);
+  background: #fff;
+}
+
+.bar h1 {
+  margin: 0;
+  font-size: 15px;
+}
+
+#bridge-status::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #1a0d0a;
+  vertical-align: 0;
+}
+
+#bridge-status[data-status="connected"]::before {
+  background: var(--lit);
+  box-shadow: 0 0 0 1px #168a20;
+}
+
+#bridge-status[data-status="closed"] {
+  color: var(--fault);
+}
+
+#line-time {
+  margin-left: auto;
+  color: var(--ink-2);
+}
+
+main {
+  padding: 16px;
+}
+
+.sign + .sign {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule);
+}
+
+.sign-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.sign-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.pitch {
+  margin-left: auto;
+  color: var(--ink-2);
+}
+
+/* The Sign's housing: a black case around the LED face, as on the 4000 Series. */
+.case {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 14px 18px;
+  background: var(--case);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 2px var(--case-edge);
+}
+
+.case canvas {
+  display: block;
+}
+
+.readout {
+  margin: 8px 0 14px;
+  font-size: 15px;
+}
+
+.flag {
+  padding: 0 4px;
+  border: 1px solid var(--fault);
+  color: var(--fault);
+}
+
+.panels {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    "files clock run register"
+    "ignored ignored ignored ignored";
+  gap: 0 24px;
+  border-top: 1px solid var(--rule);
+}
+
+.panel-files {
+  grid-area: files;
+}
+.panel-clock {
+  grid-area: clock;
+}
+.panel-run {
+  grid-area: run;
+}
+.panel-register {
+  grid-area: register;
+}
+.panel-ignored {
+  grid-area: ignored;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.panel {
+  min-width: 0;
+  padding: 8px 0 12px;
+}
+
+.panel h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.panel h3 .count {
+  color: var(--fault);
+  font-family: var(--mono);
+}
+
+.panel p {
+  margin: 0 0 4px;
+}
+
+.note {
+  color: var(--ink-2);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--rule);
+  padding: 2px 10px 2px 0;
+}
+
+td {
+  padding: 2px 10px 2px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+td.bytes {
+  width: 100%;
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+tr.priority td {
+  font-weight: 700;
+}
+
+.errors {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--fault);
+}
+
+.clock-set {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: #fff;
+  padding: 2px 4px;
+}
+
+button {
+  border-color: var(--control);
+  color: var(--control);
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--control);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--control);
+  outline-offset: 1px;
+}
+
+@media (max-width: 900px) {
+  .panels {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "files files"
+      "clock run"
+      "register register"
+      "ignored ignored";
+  }
+}
+
+.panel-clock output {
+  display: block;
+  white-space: nowrap;
+}

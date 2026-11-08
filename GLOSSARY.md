@@ -123,3 +123,21 @@ _Avoid_: schedule, window
 **Run Sequence**:
 The ordered list of TEXT Files the Sign cycles through.
 _Avoid_: playlist, rotation
+
+## Emulator
+
+**Emulator**:
+The program in `emulator/` that acts like one or more Signs on a Line and draws what each one shows (docs/emulator-spec.md).
+_Avoid_: simulator, mock
+
+**Emulated Sign**:
+One Sign inside the Emulator, with an emulator model and its Readings.
+_Avoid_: virtual sign, fake sign
+
+**Line**:
+The serial network that Signs listen on, shared by every Sign attached to it.
+_Avoid_: bus
+
+**Reading**:
+An Emulator setting that picks one reading of an unclear point in the manual. Each one has a default with a cited source.
+_Avoid_: option, flag, quirk

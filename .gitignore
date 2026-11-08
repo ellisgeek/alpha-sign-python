@@ -10,3 +10,20 @@ build/
 
 # Alpha manuals: copyrighted and large; download them (see CONTRIBUTING.md).
 docs/reference/*.pdf
+
+# Emulator (its own npm project under emulator/).
+emulator/node_modules/
+emulator/dist/
+emulator/coverage/
+emulator/.vite/
+*.tsbuildinfo
+npm-debug.log*
+
+# Playwright (the page test).
+emulator/test-results/
+emulator/playwright-report/
+emulator/blob-report/
+emulator/playwright/.cache/
+
+# Agent worktrees (Claude Code).
+.claude/worktrees/

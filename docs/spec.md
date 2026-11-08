@@ -467,7 +467,9 @@ The Sign Model registry is tested directly as data against Table 3, Table 5, Tab
 68-70, and the brochure. `SerialTransport` is tested over pyserial's `loop://`.
 
 Test adapters sit at the Transport seam: `FakeTransport`, a recording Transport that
-keeps every byte for captures, and a Sign emulator later. Witnessed tests are a subset
+keeps every byte for captures, and later the Sign emulator
+([emulator-spec.md](emulator-spec.md)), which the hardware suite reaches over
+`socket://`. Witnessed tests are a subset
 of the hardware seam: the test asks the person watching a question, such as how many
 plays they heard, and checks their answer.
 
@@ -513,8 +515,8 @@ manual brings in the overrides field (extensibility rule 3).
   `socket://` support, a raw-TCP UART bridge may work with no new adapter, but the
   pause concern still applies.
 - Alpha's own Ethernet adapters and serial servers.
-- A Sign emulator. It is planned and needs its own spec. It will be a Transport
-  adapter that can replace `FakeTransport` in some `Sign` tests.
+- A Sign emulator. It has its own spec, [emulator-spec.md](emulator-spec.md): a
+  TypeScript program that the library reaches over `socket://`, with no new Transport.
 - Writing DOTS PICTURE File content. A Memory Configuration can reserve DOTS PICTURE
   Files already.
 - Counters, Alpha 2.0 and 3.0 Commands and Control Codes, ASCII Printable formats, and
@@ -552,6 +554,23 @@ Everything left needs a real Sign. Delete each item when it is done, and drop it
   wildcard Recipient, as `set_sign_address` will refuse broadcast?
 - **Overhead per DOTS PICTURE File** and the **two-digit year on Alpha 1.0**: open
   until the hardware checklist answers them.
+
+### Future projects
+
+- **A DOTS PICTURE editor.** A web tool for drawing and editing DOTS PICTURE File
+  content pixel by pixel, at a Sign Model's size and in its colors. It needs its own
+  spec. Notes for that spec:
+  - It depends on work that is out of scope today. The library can't write DOTS
+    PICTURE content yet, and the Sign emulator ([emulator-spec.md](emulator-spec.md))
+    does not draw DOTS PICTURE Files.
+  - It should reuse the emulator's palette, its model data (pixel size, tricolor or
+    red only), and its renderer, so that the editor previews a picture the way the
+    emulator draws it.
+  - Saved pictures should be in a form that both the library and the emulator can
+    load, so that a picture can be sent to a Sign or shown on the emulator.
+  - Its expected bytes follow the same rule as everything else: they come from the
+    manual's DOTS PICTURE layout or from a capture, never from the editor's own
+    encoder.
 
 ### Prior art
 

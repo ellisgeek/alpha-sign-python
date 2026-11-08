@@ -25,6 +25,56 @@ The tests need no sign and no serial port. Tests that talk to a real sign are
 marked `hardware` and skipped by default; run them with
 `ALPHA_SIGN_PORT=/dev/tty.usbserial-XXXX uv run pytest -m hardware`.
 
+### The emulator
+
+`emulator/` is a TypeScript program that acts like a Sign on the line
+(`docs/emulator-spec.md`). It needs the Node version in `emulator/.nvmrc`:
+
+```sh
+cd emulator && npm ci              # once
+npm test && npm run check          # its own tests, type check, and lint
+npm run headless -- --port 0       # Signs on a TCP port; prints "tcp=<port> http=<port>"
+npm run serve                      # the same, with the display in a browser
+```
+
+The library reaches it as a serial port with a `socket://` URL, for example
+`SerialTransport("socket://127.0.0.1:4120")`.
+
+`uv run pytest -m emulator` runs the hardware tests against it with no Sign:
+a fixture starts the headless host on a free port, sets up one 4120C at Sign
+Address 1, and sets `ALPHA_SIGN_PORT` to it. The tests that erase memory run
+without `ALPHA_SIGN_ALLOW_ERASE`. Discovery and the witnessed tests are
+skipped, and so is the whole run (with the reason) when Node or
+`emulator/node_modules` is missing. `ALPHA_SIGN_CAPTURE` is refused: a capture
+from the emulator is never a test vector. A pass here shows the library and
+the emulator read the manual the same way; only a real Sign settles a
+`# PROVISIONAL` value.
+
+### Short names with `just`
+
+The `justfile` at the repo root gives the common commands short names.
+`just` comes with the dev dependencies, so run it as `uv run just <recipe>`
+(a `just` installed globally reads the same file). `uv run just` lists the
+recipes. Each recipe only wraps a raw command; the prek hooks and CI call the
+raw commands.
+
+| Recipe | Runs |
+|---|---|
+| `just setup` | `uv sync`, `uv run prek install`, `npm ci` in `emulator/` |
+| `just check` | `uv run prek run -a` |
+| `just test [args]` | `uv run pytest [args]` |
+| `just test-hardware PORT` | `ALPHA_SIGN_PORT=PORT uv run pytest -m hardware` |
+| `just test-emulator [args]` | `uv run pytest -m emulator [args]` |
+| `just release` | `scripts/release.sh` (never pushes) |
+| `just emu-test` | `npm test` in `emulator/` |
+| `just emu-test-page` | `npm run test:page` in `emulator/` (the page's Playwright test; run `npx playwright install chromium` once) |
+| `just emu-check` | `npm run check` in `emulator/` (typecheck and lint) |
+| `just emu-build` | `npm run build` in `emulator/` |
+| `just emu-headless [args]` | `npm run headless -- [args]` in `emulator/` (e.g. `--port 0`) |
+| `just emu-serve [args]` | `npm run serve -- [args]` in `emulator/` (bridge, page, browser) |
+| `just check-all` | `check` and `emu-check` |
+| `just test-all` | `test`, `emu-test`, and `test-emulator` |
+
 ## Writing tests
 
 - Work test-first, at the seams listed in `docs/spec.md`.
