@@ -51,6 +51,14 @@ emu-headless *args:
 emu-serve *args:
     cd emulator && npm run serve -- {{ args }}
 
+# Vegas mode: a light show of everything the Sign can do (default: the emulator from emu-serve; it erases every File)
+vegas-mode *args:
+    uv run python examples/vegas_mode.py {{ args }}
+
+# Measure how fast new data can be pushed to a Sign (default: the emulator; it erases every File)
+update-rate *args:
+    uv run python examples/update_rate.py {{ args }}
+
 # Run the hardware tests against the emulator (extra arguments go to pytest)
 test-emulator *args:
     uv run pytest -m emulator {{ args }}

@@ -72,6 +72,8 @@ raw commands.
 | `just emu-build` | `npm run build` in `emulator/` |
 | `just emu-headless [args]` | `npm run headless -- [args]` in `emulator/` (e.g. `--port 0`) |
 | `just emu-serve [args]` | `npm run serve -- [args]` in `emulator/` (bridge, page, browser) |
+| `just vegas-mode [args]` | `uv run python examples/vegas_mode.py [args]`: a console-style Vegas mode, every color, Mode, and font the Sign has on a loop (erases every File) |
+| `just update-rate [args]` | `uv run python examples/update_rate.py [args]`: updates per second for STRING and TEXT File writes and reads, against the serial line's limit (erases every File) |
 | `just check-all` | `check` and `emu-check` |
 | `just test-all` | `test`, `emu-test`, and `test-emulator` |
 
