@@ -3,7 +3,7 @@
 One-off tool, kept for reproducibility. Run from the repo root:
 
     uv run --no-project --with pymupdf python docs/reference/extract_matrices.py \
-        docs/reference/M-Protocol.pdf docs/reference/capability-matrices.json \
+        docs/reference/M-Protocol.pdf src/alpha_led_sign/capability-matrices.json \
         docs/reference/capability-matrices.md
 """
 import json, sys, pathlib, pymupdf

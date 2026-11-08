@@ -1,11 +1,13 @@
 """Commands: one instruction inside a Packet, a Command Code plus its data."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import ClassVar
 
 from alpha_led_sign.protocol.labels import check_file_label
 from alpha_led_sign.protocol.message import Message
+from alpha_led_sign.protocol.versions import ProtocolVersion
 
 
 class Command(ABC):
@@ -20,9 +22,16 @@ class Command(ABC):
     must_be_last: ClassVar[bool] = False
     """True if this Command may only be the last one in a nested Packet (p. 11)."""
 
+    min_version: ClassVar[ProtocolVersion] = ProtocolVersion.EZ_KEY_II
+    """The earliest Protocol Version that has this Command."""
+
     @abstractmethod
     def encode_data(self) -> bytes:
         """Return the Data Field that follows the Command Code."""
+
+    def codes(self) -> Iterable[object]:
+        """The Modes, Display Positions, and Control Codes in this Command's data."""
+        return ()
 
 
 PRIORITY_LABEL = "0"
@@ -50,3 +59,6 @@ class WriteText(Command):
 
     def encode_data(self) -> bytes:
         return self.label.encode("ascii") + self.message.encode()
+
+    def codes(self) -> Iterable[object]:
+        return self.message.codes()

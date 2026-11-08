@@ -117,6 +117,7 @@ for f in M-Protocol.pdf B-Alpha-4000-Series-Indoor-Displays.pdf M-Networking-Alp
 done
 ```
 
-What the library depends on is committed: `capability-matrices.json` and
-`capability-matrices.md` (Tables 68-70 of the protocol manual), with the
-script that extracted them, `extract_matrices.py`.
+What the library depends on is committed: Tables 68-70 of the protocol manual,
+extracted by `docs/reference/extract_matrices.py` into
+`src/alpha_led_sign/capability-matrices.json` (which the Sign Model registry
+loads) and `docs/reference/capability-matrices.md` (for reading).

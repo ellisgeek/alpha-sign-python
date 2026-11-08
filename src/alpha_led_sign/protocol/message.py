@@ -1,6 +1,6 @@
 """Messages and Frames: the content of a TEXT File (Table 12, p. 18)."""
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 
 from alpha_led_sign.protocol.codes import ControlCode, Mode, Position, SpecialGraphic, SpecialMode
@@ -34,6 +34,12 @@ class Frame:
                 "a Frame with a Special Graphic cannot show text; put it in the next Frame"
             )
 
+    def codes(self) -> Iterator[object]:
+        """The Mode, Display Position, and Control Codes this Frame uses."""
+        yield self.mode
+        yield self.position
+        yield from (segment for segment in self.content if not isinstance(segment, str))
+
     def encode(self) -> bytes:
         mode_field = ESC + (self.position.value + self.mode.field).encode("ascii")
         return mode_field + b"".join(_encode_segment(segment) for segment in self.content)
@@ -47,6 +53,11 @@ class Message:
 
     def __init__(self, *frames: Frame) -> None:
         object.__setattr__(self, "frames", frames)
+
+    def codes(self) -> Iterator[object]:
+        """Every Mode, Display Position, and Control Code in the Message."""
+        for frame in self.frames:
+            yield from frame.codes()
 
     def encode(self) -> bytes:
         return b"".join(frame.encode() for frame in self.frames)
