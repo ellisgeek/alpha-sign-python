@@ -1,7 +1,8 @@
 """SerialTransport over pyserial's loop:// URL: bytes written come straight back."""
 
-from alpha_led_sign import Sign
+from alpha_led_sign import Frame, Message, Sign
 from alpha_led_sign.transport import SerialFormat, SerialTransport
+from tests.vectors import TABLE_41
 
 
 def test_serial_transport_defaults_to_9600_8n1() -> None:
@@ -23,7 +24,7 @@ def test_serial_transport_can_use_7e2() -> None:
 
 def test_bytes_written_can_be_read_back_on_a_loop() -> None:
     with SerialTransport("loop://") as transport:
-        transport.write(b"\x01Z00\x02AAHELLO\x04")
+        transport.write(b"\x01Z00\x02AAHELLO\x04")  # Table 38, p. 58, without sync
         transport.pause(0.001)
 
         assert transport.read(timeout=0.5) == b"\x01Z00\x02AAHELLO\x04"
@@ -32,10 +33,10 @@ def test_bytes_written_can_be_read_back_on_a_loop() -> None:
 
 def test_sign_serial_opens_a_serial_transport() -> None:
     with Sign.serial("loop://") as sign:
-        sign.show("hi")
+        sign.write_text("A", Message(Frame(None, content="HELLO")))
 
         assert isinstance(sign.transport, SerialTransport)
-        assert sign.transport.read(timeout=0.5).endswith(b"hi\x030205\x04")
+        assert sign.transport.read(timeout=0.5) == TABLE_41
 
 
 def test_sign_serial_passes_the_read_timeout_on() -> None:

@@ -1,6 +1,6 @@
 """Sign: the facade most callers use."""
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
 from types import TracebackType
 from typing import Self
@@ -14,16 +14,23 @@ from alpha_led_sign.protocol.commands import (
     ClearMemory,
     Command,
     GeneralInformation,
+    ProgrammableTone,
     Read,
     ReadGeneralInformation,
     ReadSerialErrorStatus,
     ReadString,
     ReadText,
+    RunDays,
+    RunOrder,
     SerialErrorStatus,
     SetDate,
     SetDayOfWeek,
     SetMemoryConfiguration,
+    SetRunDays,
     SetRunSequence,
+    SetRunTimes,
+    SetSignAddress,
+    SetSpeaker,
     SetTime,
     SetTimeFormat,
     SoftReset,
@@ -33,7 +40,7 @@ from alpha_led_sign.protocol.commands import (
     WriteString,
     WriteText,
 )
-from alpha_led_sign.protocol.memory import MemoryFile
+from alpha_led_sign.protocol.memory import MemoryFile, RunTime
 from alpha_led_sign.protocol.message import Frame, Message, Segment
 from alpha_led_sign.protocol.packet import Recipient, ResponseReader, encode_packet
 from alpha_led_sign.protocol.response import ResponseError, UnexpectedResponseError
@@ -147,6 +154,10 @@ class Sign:
 
         This ERASES EVERY FILE on the Sign, including TEXT File "A". Do it once when
         setting a Sign up, then write the Files.
+
+        Only the last File may be a TEXT File of size 0, which takes the rest of memory.
+        The sizes plus the model's overhead per File must fit in its memory; a
+        configuration that doesn't warns, or raises UnsupportedCapability when strict.
         """
         self.send(SetMemoryConfiguration(files))
 
@@ -162,9 +173,61 @@ class Sign:
         """Show the time in 12-hour (am/pm) or 24-hour format."""
         self.send(SetTimeFormat(time_format))
 
-    def run_sequence(self, labels: Iterable[str]) -> None:
-        """Show these TEXT Files, in this order, each during its Run Time."""
-        self.send(SetRunSequence(labels))
+    def run_sequence(
+        self,
+        labels: Iterable[str],
+        *,
+        order: RunOrder = RunOrder.BY_RUN_TIME,
+        locked: bool = False,
+    ) -> None:
+        """Show these TEXT Files, in this order.
+
+        ``order`` says whether each File waits for its Run Time (the default), runs in
+        turn regardless, or is deleted after its Stop Time. A locked Run Sequence can't
+        be changed from the IR keyboard.
+        """
+        self.send(SetRunSequence(labels, order=order, locked=locked))
+
+    def set_run_times(self, run_times: Mapping[str, RunTime]) -> None:
+        """Set when each of these TEXT Files runs each day. Other Files keep theirs.
+
+        Writing Run Times ends a Priority TEXT File (p. 20).
+        """
+        self.send(SetRunTimes(run_times))
+
+    def set_run_days(self, run_days: Mapping[str, RunDays]) -> None:
+        """Set the days each of these TEXT Files runs on.
+
+        Writing Run Days ends a Priority TEXT File (p. 20).
+        """
+        self.send(SetRunDays(run_days))
+
+    def set_speaker(self, enabled: bool) -> None:
+        """Turn the speaker on or off. It is off by default (p. 21), and tones need it."""
+        self.send(SetSpeaker(enabled))
+
+    def tone(self, frequency: int, duration: int, repeats: int = 0) -> None:
+        """Play a tone: ``frequency`` 0-254, ``duration`` 1-15 tenths of a second.
+
+        The Sign can't take data while the tone plays, so this waits until the tone
+        has finished, counting the first play and every repeat.
+        """
+        self.send(ProgrammableTone(frequency, duration, repeats))
+
+    def set_sign_address(self, address: int, *, broadcast: bool = False) -> None:
+        """Give the Sign a new Sign Address, then address it there.
+
+        Sent to Sign Address 0 or to a pattern with ``?``, this reaches every matching
+        Sign and gives them all the same address, so it is refused unless
+        ``broadcast=True``. A DIP switch address wins after a power cycle (p. 26).
+        """
+        if not broadcast and self.recipient.reaches_several:
+            raise ValueError(
+                f"Sign Address {self.recipient.address!r} reaches every matching Sign, which "
+                "would all take the new address; pass broadcast=True to do that anyway"
+            )
+        self.send(SetSignAddress(address))
+        self.recipient = Recipient(self.recipient.sign_type, address)
 
     def set_clock(self, now: datetime) -> None:
         """Set the time, date, and day of the week in one Packet. Seconds are dropped."""

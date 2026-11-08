@@ -48,6 +48,24 @@ the manual's tables. Content a model lacks raises a warning, or
 `UnsupportedCapability` with `Sign(..., strict=True)`. `models.GENERIC` works
 with any Alpha sign and checks only the Protocol Version.
 
+## Scheduling
+
+```python
+from datetime import time
+
+from alpha_led_sign import RunDay, RunDays, RunTime
+
+sign.set_run_times({
+    "A": RunTime.between(time(8, 0), time(17, 0)),  # 10-minute steps
+    "B": RunTime.ALWAYS,
+})
+sign.set_run_days({"A": RunDays(RunDay.WEEKDAYS)})
+sign.run_sequence("AB")  # each File during its Run Time
+```
+
+Writing Run Times or Run Days ends a Priority TEXT File. The Sign also has
+`set_speaker`, `tone`, and `set_sign_address`.
+
 ## Reading and discovery
 
 ```python

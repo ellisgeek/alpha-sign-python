@@ -7,9 +7,10 @@ from datetime import date, time
 from enum import Enum
 from typing import ClassVar
 
+from alpha_led_sign.protocol.addresses import check_sign_address
 from alpha_led_sign.protocol.codes import Color, Control, CurrentTime, Font, Spacing, Speed, Wide
 from alpha_led_sign.protocol.labels import check_file_label
-from alpha_led_sign.protocol.memory import MemoryFile, RunTime
+from alpha_led_sign.protocol.memory import MemoryFile, RunTime, TextFile, lock_byte
 from alpha_led_sign.protocol.message import (
     Message,
     Segment,
@@ -131,6 +132,12 @@ class SetMemoryConfiguration(SpecialFunction):
     def __init__(self, files: Sequence[MemoryFile]) -> None:
         if not files:
             raise ValueError("a Memory Configuration needs at least one File; use ClearMemory")
+        for file in files[:-1]:
+            if isinstance(file, TextFile) and file.size == 0:
+                # p. 27, note 1: size 0 takes the rest of memory, so it must come last.
+                raise ValueError(
+                    f"TEXT File {file.label!r} has size 0, which only the last File may have"
+                )
         object.__setattr__(self, "files", tuple(files))
 
     def encode_payload(self) -> bytes:
@@ -146,7 +153,10 @@ class ClearMemory(SpecialFunction):
 
 @dataclass(frozen=True, init=False)
 class SetRunTimes(SpecialFunction):
-    """Set when TEXT Files run each day (")", p. 22). Other Files keep their Run Times."""
+    """Set when TEXT Files run each day (")", p. 22). Other Files keep their Run Times.
+
+    Writing it ends a Priority TEXT File (p. 20).
+    """
 
     label: ClassVar[str] = ")"
     run_times: tuple[tuple[str, RunTime], ...]
@@ -165,13 +175,18 @@ class SetRunTimes(SpecialFunction):
 
 @dataclass(frozen=True)
 class SetDate(SpecialFunction):
-    """Set the date (";", p. 26), sent as mmddyy."""
+    """Set the date (";", p. 26), sent as mmddyy.
+
+    Only years 1997-2096 are accepted. p. 28, note 15 gives that window for the
+    two-digit year on Alpha 2.0 and later only. It is applied to every Sign until a
+    hardware check shows how an Alpha 1.0 Sign reads the year.
+    """
 
     label: ClassVar[str] = ";"
     date: date
 
     def __post_init__(self) -> None:
-        # p. 28, note 15: two-digit years are windowed to 1997-2096.
+        # p. 28, note 15 (Alpha 2.0 and later): two-digit years mean 1997-2096.
         if not 1997 <= self.date.year <= 2096:
             raise ValueError(f"a Sign's date must be in 1997-2096, got {self.date.year}")
 
@@ -244,8 +259,8 @@ class SetRunSequence(SpecialFunction):
         object.__setattr__(self, "locked", locked)
 
     def encode_payload(self) -> bytes:
-        lock = "L" if self.locked else "U"
-        return (self.order.value + lock + "".join(self.labels)).encode("ascii")
+        order = self.order.value.encode("ascii")
+        return order + lock_byte(self.locked) + "".join(self.labels).encode("ascii")
 
 
 class RunDay(Enum):
@@ -395,8 +410,7 @@ class SetSignAddress(SpecialFunction):
     address: int
 
     def __post_init__(self) -> None:
-        if not 0 <= self.address <= 0xFF:
-            raise ValueError(f"a Sign Address must be 0-255, got {self.address}")
+        check_sign_address(self.address)
 
     def encode_payload(self) -> bytes:
         return f"{self.address:02X}".encode("ascii")

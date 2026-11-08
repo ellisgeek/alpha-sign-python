@@ -9,18 +9,20 @@ from tests.fakes import FakeTransport
 
 SYNC = b"\x00" * 5
 NULS = b"\x00" * 20
-# Checksums by hand: STX + "E-" + UAAZ + ETX.
-FOUND_4120C_AT_0F = NULS + b"\x01000\x02E-a0F@\x03018E\x04"  # 2+45+2D+61+30+46+40+3 = 18E
-FOUND_4080C_AT_02 = NULS + b"\x01000\x02E-t02P\x03019D\x04"  # 2+45+2D+74+30+32+50+3 = 19D
+# Answers: "E-" + UAAZ (U = Sign Type, AA = Sign Address, Z = serial error status, p. 32).
+# PROVISIONAL: hand-summed; replace with a capture from a real Sign.
+FOUND_4120C_AT_0F = NULS + b"\x01000\x02E-a0F@\x03018E\x04"
+# PROVISIONAL: hand-summed; replace with a capture from a real Sign.
+FOUND_4080C_AT_02 = NULS + b"\x01000\x02E-t02P\x03019D\x04"
 
 
 def test_network_query_is_broadcast_to_every_sign() -> None:
     transport = FakeTransport()
 
-    discover(transport)
+    discover(transport, checksum=False)
 
-    # 02+46+2D+03 = 78
-    assert transport.written == SYNC + b"\x01Z00\x02F-\x030078\x04"
+    # Read SPECIAL FUNCTION layout of Table 53 (p. 69), label "-" from p. 32.
+    assert transport.written == SYNC + b"\x01Z00\x02F-\x04"
 
 
 def test_discovered_signs_report_type_address_and_errors_sorted_by_address() -> None:
@@ -48,7 +50,7 @@ def test_discovery_waits_long_enough_for_the_highest_address_to_answer() -> None
 
 def test_garbled_answers_are_skipped_with_a_warning() -> None:
     # p. 32: two Signs with one address collide and garble each other.
-    garbled = NULS + b"\x01000\x02E-a0F@\x030000\x04"
+    garbled = NULS + b"\x01000\x02E-a0F@\x030000\x04"  # checksum 0000 can't match this data
     transport = FakeTransport(responses=[garbled, FOUND_4080C_AT_02])
 
     with pytest.warns(UserWarning, match="garbled"):

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from alpha_led_sign import models
 from alpha_led_sign.models import SignModel
+from alpha_led_sign.protocol.addresses import check_sign_address
 from alpha_led_sign.protocol.commands import NetworkQuery, SerialErrorStatus
 from alpha_led_sign.protocol.packet import (
     ReceivedResponse,
@@ -35,8 +36,7 @@ class DiscoveredSign:
     @property
     def model(self) -> SignModel | None:
         """The registered Sign Model with this Sign Type, if there is exactly one."""
-        matches = [m for m in models.REGISTRY.values() if m.sign_type == self.sign_type]
-        return matches[0] if len(matches) == 1 else None
+        return models.by_sign_type(self.sign_type)
 
 
 def discover(
@@ -49,8 +49,7 @@ def discover(
     Signs' addresses are known to be small. Two Signs sharing an address garble each
     other's answers (p. 32); those answers are skipped with a warning.
     """
-    if not 0 <= max_address <= 0xFF:
-        raise ValueError(f"max_address must be 0-255, got {max_address}")
+    check_sign_address(max_address, name="max_address")
     broadcast = Recipient(models.GENERIC.sign_type, 0)
     send_packet(transport, encode_packet(broadcast, [NetworkQuery()], checksum=checksum))
     wait = FIRST_ANSWER_DELAY + max_address * PER_ADDRESS_DELAY + MARGIN

@@ -1,6 +1,7 @@
 """Sign Models: profiles from the manual and brochure, and validation against them."""
 
 import warnings
+from dataclasses import replace
 
 import pytest
 
@@ -24,7 +25,8 @@ from alpha_led_sign.protocol.codes import (
     SpecialMode,
     StringRef,
 )
-from alpha_led_sign.protocol.commands import WriteString, WriteText
+from alpha_led_sign.protocol.commands import SetMemoryConfiguration, WriteString, WriteText
+from alpha_led_sign.protocol.memory import DotsPictureFile, StringFile, TextFile
 from alpha_led_sign.protocol.message import Frame, Message
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
@@ -106,6 +108,21 @@ def test_unknown_model_names_raise_a_helpful_error() -> None:
         models.get("9999X")
 
 
+def test_a_sign_type_finds_the_one_model_that_has_it() -> None:
+    # Table 5, p. 10: "a" is the 4120C, "^" the BetaBrite; "!" is no Sign Type.
+    assert models.by_sign_type("a") is models.ALPHA_4120C
+    assert models.by_sign_type("^") is models.BETABRITE
+    assert models.by_sign_type("!") is None
+
+
+def test_a_sign_type_that_several_models_share_finds_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    twin = replace(models.ALPHA_4120C, name="4120C twin")
+    monkeypatch.setitem(models.REGISTRY, twin.name, twin)
+    assert models.by_sign_type("a") is None
+
+
 def write(*frames: Frame) -> WriteText:
     return WriteText("A", Message(*frames))
 
@@ -177,3 +194,56 @@ def test_generic_model_does_not_check_capabilities() -> None:
 def test_string_file_content_is_validated_too() -> None:
     with pytest.raises(UnsupportedCapability, match="color"):
         validate(models.ALPHA_4120R, [WriteString("T", [Color.GREEN, "72"])], strict=True)
+
+
+def configure(*files: TextFile | StringFile | DotsPictureFile) -> SetMemoryConfiguration:
+    return SetMemoryConfiguration(files)
+
+
+def test_a_memory_configuration_that_fills_the_4120c_exactly_passes() -> None:
+    # Table 5 and the brochure: 28,000 bytes. p. 27, note 1: 11 bytes of overhead per File.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        validate(models.ALPHA_4120C, [configure(TextFile("A", size=27_989))], strict=True)
+
+
+def test_a_memory_configuration_too_big_for_the_4120c_raises_in_strict_mode() -> None:
+    with pytest.raises(UnsupportedCapability, match=r"28,000 bytes.*needs 28,001"):
+        validate(models.ALPHA_4120C, [configure(TextFile("A", size=27_990))], strict=True)
+
+
+def test_a_memory_configuration_too_big_for_the_4120c_warns_otherwise() -> None:
+    with pytest.warns(UnsupportedCapabilityWarning, match="memory"):
+        validate(models.ALPHA_4120C, [configure(TextFile("A", size=27_990))])
+
+
+def test_every_file_counts_its_overhead_but_dots_picture_sizes_do_not() -> None:
+    # p. 27, note 1 leaves DOTS PICTURE sizes out of the sum; their overhead is counted.
+    files = (
+        TextFile("A", size=27_966),
+        StringFile("T", size=1),
+        DotsPictureFile("p", rows=16, columns=120),
+    )
+    validate(models.ALPHA_4120C, [configure(*files)], strict=True)  # 27,966 + 1 + 3 x 11 = 28,000
+
+    with pytest.raises(UnsupportedCapability, match="memory"):
+        validate(
+            models.ALPHA_4120C, [configure(TextFile("A", size=27_967), *files[1:])], strict=True
+        )
+
+
+def test_a_last_text_file_of_size_0_counts_only_its_overhead() -> None:
+    files = (TextFile("B", size=27_978), TextFile("A", size=0))  # 27,978 + 2 x 11 = 28,000
+
+    validate(models.ALPHA_4120C, [configure(*files)], strict=True)
+
+
+def test_the_overhead_per_file_is_model_data() -> None:
+    model = replace(models.ALPHA_4120C, file_overhead=13)  # the readerboard project's figure
+
+    with pytest.raises(UnsupportedCapability, match="memory"):
+        validate(model, [configure(TextFile("A", size=27_989))], strict=True)
+
+
+def test_memory_is_not_checked_when_the_models_size_is_unknown() -> None:
+    validate(models.GENERIC, [configure(TextFile("A", size=0xFFFF))], strict=True)

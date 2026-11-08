@@ -42,7 +42,10 @@ python-version = "3.12"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-markers", "-m", "not hardware"]
-markers = ["hardware: needs a real sign; set ALPHA_SIGN_PORT and run with -m hardware"]
+markers = [
+    "hardware: needs a real sign; set ALPHA_SIGN_PORT and run with -m hardware",
+    "witness: asks the person watching the sign; set ALPHA_SIGN_WITNESS=1 and run with -m witness -s",
+]
 
 [tool.ty.src]
 exclude = ["docs"]

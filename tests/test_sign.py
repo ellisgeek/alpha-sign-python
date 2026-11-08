@@ -1,29 +1,48 @@
 """The Sign facade over FakeTransport: the Packets and pauses it sends."""
 
-from datetime import datetime
+from datetime import datetime, time
 
 import pytest
 
-from alpha_led_sign import Sign, SignTimeoutError, models
+from alpha_led_sign import (
+    RunDay,
+    RunDays,
+    RunOrder,
+    RunTime,
+    Sign,
+    SignTimeoutError,
+    Weekday,
+    models,
+)
 from alpha_led_sign.models import UnsupportedCapability, UnsupportedCapabilityWarning
 from alpha_led_sign.protocol.codes import Color, Font, Mode, Position, StringRef
-from alpha_led_sign.protocol.commands import ReadDayOfWeek, TimeFormat, Tone, Weekday
+from alpha_led_sign.protocol.commands import ReadDayOfWeek, TimeFormat, Tone
 from alpha_led_sign.protocol.memory import StringFile, TextFile
 from alpha_led_sign.protocol.message import Frame, Message
 from alpha_led_sign.protocol.response import ResponseError, UnexpectedResponseError
 from tests.fakes import FakeTransport
+from tests.vectors import TABLE_41
 
 SYNC = b"\x00" * 5
 
 
-def test_show_writes_text_file_a_to_the_models_sign_type_with_a_checksum() -> None:
+def test_a_checksummed_write_to_every_sign_matches_table_41() -> None:
     transport = FakeTransport()
-    sign = Sign(transport, model=models.ALPHA_4120C)
+    sign = Sign(transport)  # the generic model: Sign Type Z, address 00
+
+    sign.write_text("A", Message(Frame(None, content="HELLO")))
+
+    assert transport.written == TABLE_41
+
+
+def test_show_writes_text_file_a_to_the_models_sign_type_with_a_mode_field() -> None:
+    transport = FakeTransport()
+    sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
 
     sign.show("Hello")
 
-    # HOLD in FILL position; checksum 02+41+41+1B+30+62+"Hello"(1F4)+03 = 0328.
-    assert transport.written == SYNC + b"\x01a00\x02AA\x1b0bHello\x030328\x04"
+    # Sign Type "a" (Table 5); Mode Field ESC, FILL "0", HOLD "b" (Tables 12 and 47).
+    assert transport.written == SYNC + b"\x01a00\x02AA\x1b0bHello\x04"
 
 
 def test_set_clock_nests_time_date_and_weekday_with_pauses_after_each_stx() -> None:
@@ -191,6 +210,8 @@ def test_read_string_and_serial_errors() -> None:
     transport = FakeTransport(
         responses=[
             NULS + b"\x01000\x02G28,234,000\x030237\x04",  # Table 59
+            # PROVISIONAL: hand-summed; replace with a capture from a real Sign.
+            # Register 40H means no errors (p. 31).
             NULS + b"\x01000\x02E*@\x03" + b"00B4" + b"\x04",
         ]
     )
@@ -265,3 +286,95 @@ def test_a_garbled_answer_raises_instead_of_being_skipped() -> None:
 
     with pytest.raises(ResponseError, match="checksum"):
         Sign(transport).read_text("C")
+
+
+def _checksumless_4120c(address: int | str = 1) -> tuple[Sign, FakeTransport]:
+    """A 4120C at ``address`` that sends without checksums."""
+    transport = FakeTransport()
+    return Sign(transport, model=models.ALPHA_4120C, address=address, checksum=False), transport
+
+
+def test_set_run_times_sends_each_text_files_start_and_stop() -> None:
+    # Table 15, ")" (p. 22): FQQQQ per File. Appendix B: 8:00 a.m. = 30H, 5:00 p.m. = 66H,
+    # Never = FEH. Table 38 layout: a lone Command without a Checksum has no ETX.
+    sign, transport = _checksumless_4120c()
+
+    sign.set_run_times({"A": RunTime.between(time(8, 0), time(17, 0)), "B": RunTime.NEVER})
+
+    assert transport.events == [("write", SYNC + b"\x01a01\x02E)A3066BFE00\x04")]
+
+
+def test_set_run_days_sends_each_text_files_start_and_stop_day() -> None:
+    # Table 15, "2" (p. 24): FSs. "8" = Monday-Friday; "2" = Monday ... "6" = Friday.
+    sign, transport = _checksumless_4120c()
+
+    sign.set_run_days(
+        {"A": RunDays(RunDay.WEEKDAYS), "B": RunDays(RunDay.MONDAY, stop=Weekday.FRIDAY)}
+    )
+
+    assert transport.events == [("write", SYNC + b"\x01a01\x02E2A81B26\x04")]
+
+
+def test_run_sequence_takes_an_order_and_a_lock() -> None:
+    # Table 15, "." (p. 23): KPF..., "T" = by Run Time, "S" = in order, "U"/"L" = lock.
+    sign, transport = _checksumless_4120c()
+
+    sign.run_sequence("AB")
+    sign.run_sequence("AB", order=RunOrder.IN_ORDER, locked=True)
+
+    assert transport.written == (SYNC + b"\x01a01\x02E.TUAB\x04" + SYNC + b"\x01a01\x02E.SLAB\x04")
+
+
+def test_set_speaker_enables_and_disables() -> None:
+    # Table 15, "!" (p. 21): "00" = enable, "FF" = disable.
+    sign, transport = _checksumless_4120c()
+
+    sign.set_speaker(True)
+    sign.set_speaker(False)
+
+    assert transport.written == SYNC + b"\x01a01\x02E!00\x04" + SYNC + b"\x01a01\x02E!FF\x04"
+
+
+def test_tone_waits_until_every_play_has_finished() -> None:
+    # Table 15, "(" (p. 22): "2" + FFDR, D in 0.1 s steps. p. 27, note 5: wait for the
+    # tone to finish, here the first play and 3 repeats of 0.5 s each.
+    sign, transport = _checksumless_4120c()
+
+    sign.tone(0xA0, 5, repeats=3)
+
+    assert transport.events == [
+        ("write", SYNC + b"\x01a01\x02E(2A053\x04"),
+        ("pause", pytest.approx(2.0)),
+    ]
+
+
+def test_set_sign_address_sends_the_new_address_and_then_uses_it() -> None:
+    # Table 15, "7" (p. 26): two hex digits.
+    sign, transport = _checksumless_4120c()
+
+    sign.set_sign_address(0x2F)
+    sign.set_speaker(True)
+
+    assert transport.written == SYNC + b"\x01a01\x02E72F\x04" + SYNC + b"\x01a2F\x02E!00\x04"
+
+
+@pytest.mark.parametrize("address", [0, "1?", "??"])
+def test_set_sign_address_refuses_a_recipient_that_reaches_several_signs(
+    address: int | str,
+) -> None:
+    sign, transport = _checksumless_4120c(address)
+
+    with pytest.raises(ValueError, match="broadcast=True"):
+        sign.set_sign_address(0x2F)
+
+    assert transport.events == []
+
+
+def test_set_sign_address_reaches_every_sign_when_asked() -> None:
+    sign, transport = _checksumless_4120c(0)
+
+    sign.set_sign_address(0x2F, broadcast=True)
+
+    # Table 15, "7" (p. 26), sent to Sign Address 00, which every Sign hears (p. 11).
+    assert transport.written == SYNC + b"\x01a00\x02E72F\x04"
+    assert sign.recipient.address == 0x2F

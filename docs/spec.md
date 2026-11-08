@@ -5,12 +5,13 @@ and what work is still open. Terms in **bold** are defined in
 [GLOSSARY.md](../GLOSSARY.md). Decisions with a longer story are in [adr/](adr/).
 Page and table numbers refer to the Alpha Sign Communications Protocol manual,
 9708-8061F ([reference/](reference/), with the 4000 Series brochure and the networking
-manual). Stories and decisions marked **(not built)** are covered by
+manual). Stories and decisions marked **(waits for hardware)** are covered by
 [Remaining work](#remaining-work).
 
 Status (November 2026): the library covers Alpha 1.0 Packet framing, TEXT and STRING
-Files, Sign Models, special functions, the serial Transport, `Sign`, reads, and
-discovery. All of it passes offline. It has not yet run against a real **Sign**.
+Files, Sign Models and the memory budget, special functions and scheduling, the serial
+Transport, `Sign`, reads, and discovery. All of it passes offline. Every hardware
+checklist item has a test, but none has run against a real **Sign** yet.
 
 ## Problem Statement
 
@@ -106,12 +107,11 @@ from a real Sign.
     that it erases every **File**, so that I don't wipe a Sign by accident.
 19. As an application developer, I want a Memory Configuration that breaks a protocol
     rule (a STRING File of size 0, or a TEXT File of size 0 that is not last) to be
-    refused, so that the Sign does not reject it without telling me. **(not built)**
+    refused, so that the Sign does not reject it without telling me.
 20. As an application developer, I want a warning when my Memory Configuration needs
     more memory than my Sign Model has, so that I find out before the Sign runs out.
-    **(not built)**
 21. As an application developer using strict mode, I want that memory overflow to
-    raise, so that my setup script stops. **(not built)**
+    raise, so that my setup script stops.
 22. As an application developer, I want to clear all memory, so that I can return a
     Sign to a known state.
 23. As an application developer, I want to soft-reset a Sign and keep its memory, so
@@ -127,14 +127,14 @@ from a real Sign.
     which TEXT Files the Sign cycles through.
 27. As an application developer, I want to say whether the Run Sequence follows **Run
     Times** and whether it is locked, so that I can match how the Sign is used.
-    **(not built** on `Sign`; the Command has it**)**
+
 28. As an application developer, I want to set a Run Time for each TEXT File as a pair
     of times of day, or as Always, Never, or All Day, so that Files show only when they
-    apply. **(not built** on `Sign`**)**
+    apply.
 29. As an application developer, I want a Run Time that is not on a 10-minute step to
     be refused, so that I learn about the protocol's resolution (Appendix B).
 30. As an application developer, I want to set the days each TEXT File runs on, so
-    that weekday-only content stays off at weekends. **(not built** on `Sign`**)**
+    that weekday-only content stays off at weekends.
 31. As an application developer, I want the documentation of Run Time and Run Day
     writes to say that they end a Priority TEXT File (p. 20), so that I am not
     surprised.
@@ -144,19 +144,17 @@ from a real Sign.
 32. As an application developer, I want to sound a built-in tone, so that the Sign
     can draw attention.
 33. As an application developer, I want to play a tone of a given pitch, length, and
-    repeat count, so that I can choose my own alert sound. **(not built** on `Sign`**)**
+    repeat count, so that I can choose my own alert sound.
 34. As an application developer, I want the library to wait after a tone until the
     Sign can take data again, so that the next write is not lost.
 35. As an application developer, I want to turn the speaker on or off, so that I
-    control whether tones sound. **(not built** on `Sign`**)**
+    control whether tones sound.
 36. As an application developer, I want to set a Sign's **Sign Address** from
-    software, so that I can put several Signs on one line. **(not built** on `Sign`**)**
+    software, so that I can put several Signs on one line.
 37. As an application developer, I want that call to refuse to send to the broadcast
     address unless I say so, so that I don't give every Sign the same address.
-    **(not built)**
 38. As an application developer, I want the `Sign` object to address the new Sign
     Address after it changes it, so that my next call still reaches that Sign.
-    **(not built)**
 
 ### Reading back
 
@@ -226,10 +224,8 @@ from a real Sign.
     without `Sign`, so that I can send Commands the facade does not wrap.
 64. As an advanced developer, I want to import every public Command and code from
     the protocol package, so that I don't depend on internal module names.
-    **(not built)**
 65. As an application developer, I want the scheduling argument types exported from
     the top-level package, so that a scheduling call needs no deep imports.
-    **(not built)**
 66. As an application developer, I want every public name to have type hints, so that
     my editor and type checker catch mistakes.
 
@@ -237,7 +233,7 @@ from a real Sign.
 
 67. As a maintainer, I want every expected byte in the tests to cite a manual table or
     page or a hardware capture, so that a test can't pass by repeating the code's own
-    mistake. **(not built:** some tests still break this rule**)**
+    mistake. **(waits for hardware:** three Response vectors are hand-summed until a capture replaces them**)**
 68. As a maintainer, I want to add a Sign Model by adding one data entry, so that
     support grows without new classes.
 69. As a maintainer, I want to add a Command by adding one small class, so that Alpha
@@ -245,22 +241,21 @@ from a real Sign.
 70. As a maintainer, I want a test that fails when a Mode, Special Mode, or font has
     no entry in the requirements lookup, so that validation can't skip a new code.
 71. As a maintainer, I want a test that imports every public name, so that removing an
-    export fails CI. **(not built)**
+    export fails CI.
 72. As a hardware tester, I want to run the hardware tests against my Sign with
     environment variables for port, model, address, baud, and format, so that one
-    suite works for any Sign set up any way. **(not built** for discovery**)**
+    suite works for any Sign set up any way.
 73. As a hardware tester, I want tests that erase memory to run only when I allow it,
     so that a test run doesn't wipe a Sign in use.
 74. As a hardware tester, I want to record every byte written and read in a hardware
-    run to a file, so that those captures become test vectors. **(not built)**
+    run to a file, so that those captures become test vectors.
 75. As a hardware tester, I want to measure the per-File memory overhead on a real
-    Sign, so that the model's memory budget is right. **(not built)**
+    Sign, so that the model's memory budget is right.
 76. As a hardware tester, I want witnessed tests that ask me what I saw or heard, so
     that the checklist items a machine can't check still get a recorded answer.
-    **(not built)**
 77. As a maintainer, I want each hardware result recorded with the manual's claim,
     the Sign's behavior, the firmware, and the date, so that profile overrides are
-    traceable. **(not built)**
+    traceable.
 
 ## Implementation Decisions
 
@@ -311,7 +306,7 @@ to one Sign Model.
    4000 Series models lose the color Capability (Table 69, note 1).
 3. **Overrides wait for evidence.** Until hardware shows the first difference from the
    manual, an override is a copy of a model with replaced Capabilities. A declared
-   overrides field arrives with that first difference. **(not built)**
+   overrides field arrives with that first difference. **(waits for hardware)**
 4. **Every code's needs are looked up in one place.** Each Command declares the
    minimum Protocol Version it needs. For every Mode, color, font, and other Control
    Code, one requirements function gives the minimum version and the Capability. A
@@ -361,9 +356,10 @@ to one Sign Model.
   `configure_memory`, `clear_memory`, `soft_reset`, `set_time_format`,
   `run_sequence`, `set_clock`, `beep`, `read_text`, `read_string`, `info`,
   `serial_errors`. Lower-level methods: `send` (validate, encode, and send Commands in
-  one Packet) and `query` (send one read and parse its answer). **(not built:**
-  `set_run_times`, `set_run_days`, `set_speaker`, `tone`, `set_sign_address`, and the
-  order and lock arguments of `run_sequence`**.)**
+  one Packet) and `query` (send one read and parse its answer). Scheduling, sound,
+  and addressing: `set_run_times`, `set_run_days`, `set_speaker`, `tone`,
+  `set_sign_address`, and order (default by Run Time) and lock (default unlocked)
+  arguments on `run_sequence`.
 - **Default File.** `show` and `read_text` use TEXT File `A`, which every Sign has at
   power-up (p. 17). `show` uses HOLD and fills the display unless told otherwise.
 - **Discovery.** Takes a Transport (not a `Sign`), a highest address (default 255),
@@ -394,7 +390,7 @@ to one Sign Model.
 | Error | When |
 |---|---|
 | `ValueError` | A value breaks a protocol rule, when the value is built: a bad File Label, Sign Type, Sign Address, size, Run Time, tone value, character, too-long STRING or Priority content, an illegal Control Code for a STRING File, framing bytes in data, a Command after one that must be last. |
-| `UnsupportedCapability` | Strict validation: the Sign Model lacks a Capability or Protocol Version a Command needs. Also a Memory Configuration larger than the model's memory **(not built)**. |
+| `UnsupportedCapability` | Strict validation: the Sign Model lacks a Capability or Protocol Version a Command needs. Also a Memory Configuration larger than the model's memory. |
 | `UnsupportedCapabilityWarning` | The same problems, in advisory mode. |
 | `ResponseError` (a `ValueError`) | A Response is malformed, fails its Checksum, or is not what the read expected. |
 | `UnexpectedResponseError` (a `ResponseError`) | A well-formed Response answers a different read. |
@@ -406,19 +402,21 @@ by default. The name `UnsupportedCapability` has no `Error` suffix; it is part o
 public interface. A wider base class (such as `ValidationError`) would be a separate
 change.
 
-### Decided, not built
+### Rules added after review
 
 - A STRING File of size 0, or a TEXT File of size 0 that is not last, raises
   `ValueError` (p. 27, note 1: size 0 is valid only for a last TEXT File).
-- `SignModel` gains a per-File overhead field, default 11 bytes (p. 27, note 1;
+- `SignModel` has a per-File overhead field, default 11 bytes (p. 27, note 1;
   readerboard reports 13, so this is model data). The memory budget counts TEXT and
   STRING sizes plus the overhead for every File, DOTS PICTURE Files included (the
   cautious reading of note 1). The check is skipped when the memory size is unknown.
   An overflow is `UnsupportedCapability` in strict mode and a warning otherwise.
-- `set_sign_address` refuses address 0 unless the caller passes `broadcast=True`:
+- `set_sign_address` refuses address 0 or a `?` pattern (both reach more than one
+  Sign) unless the caller passes `broadcast=True`:
   sent to broadcast, it would give every Sign on the line the same address. The
-  refusal sends nothing.
-- One Sign Address check, next to Recipient, is used by Recipient, the address
+  refusal sends nothing. After sending, `Sign` addresses the new Sign Address.
+- One Sign Address check, in its own protocol module (next to Recipient would make
+  an import cycle), is used by Recipient, the address
   Command, and discovery. Lookup by Sign Type (a model only when exactly one has that
   Sign Type) lives in the models module, and the discovered Sign uses it.
 - The lock byte of a Memory Configuration entry and of a Run Sequence comes from one
@@ -468,9 +466,18 @@ change.
 The Sign Model registry is tested directly as data against Table 3, Table 5, Tables
 68-70, and the brochure. `SerialTransport` is tested over pyserial's `loop://`.
 
-New test adapters go at the Transport seam: a recording Transport for captures, and a
-Sign emulator later. Witnessed tests are a subset of the hardware seam, behind their
-own marker and an environment variable.
+Test adapters sit at the Transport seam: `FakeTransport`, a recording Transport that
+keeps every byte for captures, and a Sign emulator later. Witnessed tests are a subset
+of the hardware seam: the test asks the person watching a question, such as how many
+plays they heard, and checks their answer.
+
+Hardware runs take these environment variables: `ALPHA_SIGN_PORT` (required),
+`ALPHA_SIGN_MODEL`, `ALPHA_SIGN_ADDRESS`, `ALPHA_SIGN_BAUD`, `ALPHA_SIGN_FORMAT`,
+`ALPHA_SIGN_ALLOW_ERASE=1` (tests that write the Memory Configuration),
+`ALPHA_SIGN_ALLOW_READDRESS=1` (a capture at a second Sign Address; needs a nonzero
+`ALPHA_SIGN_ADDRESS`), `ALPHA_SIGN_CAPTURE=<path>` (write all traffic, with model,
+firmware, and date, to JSON), and `ALPHA_SIGN_WITNESS=1` with pytest's `-s`
+(`-m witness`).
 
 ### Prior art in the codebase
 
@@ -485,19 +492,20 @@ own marker and an environment variable.
 
 Each hardware test maps to one of these items: a place where the manual is unclear or
 the library made an assumption. Each result is recorded with the manual's claim, what
-the Sign did, the firmware, and the date. The first result that disagrees with the
+the Sign did, the firmware, and the date, in
+[hardware-results.md](hardware-results.md). The first result that disagrees with the
 manual brings in the overrides field (extensibility rule 3).
 
 | Item | Library's assumption | Test |
 |---|---|---|
-| Network Query answers: the manual gives only the `UAAZ` data. | Each arrives as a Response Packet (`E-UAAZ` with a Checksum), like other special function reads. | Automatic (exists) |
-| General Information: the manual says 28 or 29 characters, but its field list adds up to 29 plus an optional NUL. | 29 characters. | Automatic (exists) |
-| Programmable tones: whether `R` (repeats) counts the first play. | It doesn't: the library waits for `R + 1` plays. | Witnessed: "Did you hear 3 plays?" **(not built)** |
-| NEWS FLASH and TRUMPET: Table 66 gives `"A"`/`"B"` and also hex 3AH/3BH. | The letters. | Witnessed: show each form. **(not built)** |
-| NEW_PAGE and double height on the 4000 Series: missing from Tables 69 and 70. | Not supported. | Witnessed: show each. **(not built)** |
-| Two-digit year on Alpha 1.0: p. 28, note 15 gives the 1997-2096 window for Alpha 2.0 and later only. | The window applies to every Sign. | Witnessed: set 2026-11-07, show the date. **(not built)** |
-| Per-File overhead: the manual says 11 bytes, readerboard reports 13. Whether DOTS PICTURE Files count. | 11 bytes, DOTS PICTURE included. | Automatic, needs erase permission: measure free memory with one File and with three. **(not built)** |
-| Total memory: General Information against the model's memory size. | 28,000 bytes on the 4000 Series. | Automatic, with the overhead test. **(not built)** |
+| Network Query answers: the manual gives only the `UAAZ` data. | Each arrives as a Response Packet (`E-UAAZ` with a Checksum), like other special function reads. | Automatic |
+| General Information: the manual says 28 or 29 characters, but its field list adds up to 29 plus an optional NUL. | 29 characters. | Automatic |
+| Programmable tones: whether `R` (repeats) counts the first play. | It doesn't: the library waits for `R + 1` plays. | Witnessed: "Did you hear 3 plays?" |
+| NEWS FLASH and TRUMPET: Table 66 gives `"A"`/`"B"` and also hex 3AH/3BH. | The letters. | Witnessed: show each form. |
+| NEW_PAGE and double height on the 4000 Series: missing from Tables 69 and 70. | Not supported. | Witnessed: show each. |
+| Two-digit year on Alpha 1.0: p. 28, note 15 gives the 1997-2096 window for Alpha 2.0 and later only. | The window applies to every Sign. | Witnessed: set 2026-11-07, show the date. |
+| Per-File overhead: the manual says 11 bytes, readerboard reports 13. Whether DOTS PICTURE Files count. | 11 bytes, DOTS PICTURE included. | Automatic, needs erase permission: measure free memory with one File and with three. |
+| Total memory: General Information against the model's memory size. | 28,000 bytes on the 4000 Series. | Automatic, with the overhead test. |
 
 ## Out of Scope
 
@@ -519,87 +527,20 @@ manual brings in the overrides field (extensibility rule 3).
 
 ## Remaining work
 
-Each item is one branch and one pull request, test-first at the seams above. Suggested
-order: 1, 5, 2, 3, 4, then the hardware captures in 1. Delete each item when it
-lands, and drop its **(not built)** marks. When this section is empty, the spec
-describes the library as built.
+Everything left needs a real Sign. Delete each item when it is done, and drop its
+**(waits for hardware)** marks.
 
-### 1. Independent test vectors
-
-Some tests compare against Checksums added up by hand with the same byte sum the code
-uses, and one builds its expected bytes with the encoder. Both break the testing rules.
-
-- **Request Checksums.** Match a manual example exactly, or send with checksums off:
-
-  | Test | Change to |
-  |---|---|
-  | `test_show_writes_text_file_a_to_the_models_sign_type_with_a_checksum` | A Sign at `Z00` writing one Frame with no Mode, `HELLO`, to File `A`, compared with Table 41 (`AAHELLO`, Checksum `01FB`). A second test checks, with checksums off, that `show` adds the Mode Field (layout from Tables 12 and 47). |
-  | `test_sign_serial_opens_a_serial_transport` | The same Table 41 write over `loop://`. |
-  | `test_network_query_is_broadcast_to_every_sign` | Checksums off, expected `\x01Z00\x02F-\x04` (Table 53 layout, label from p. 32). |
-  | `test_serial_error_status_register_bits_follow_page_31` | Checksums off, expected to end with `\x02F*\x04` (Table 53 layout, label from p. 31). |
-
-- **Response Checksums.** The manual has no example Response for a Network Query or
-  the Serial Error Status Register, so the only independent source is a real Sign.
-  Replace the canned discovery answers and the Serial Error Status Response in the
-  `Sign` tests with captured bytes (item 4), each cited as captured from a 4120C with
-  its firmware and date. Discovery needs answers from two Sign Addresses: capture the
-  Sign at two addresses, or else test sorting with one captured answer at two places
-  in the stream. Until then, mark the hand-summed vectors `# PROVISIONAL`.
-- **Expectations built by the code.** `test_literal_text_may_use_the_whole_standard_character_set`
-  expects `b"\x1b0b" + bytes(range(0x20, 0x80))` (Appendix G, p. 83). Rename the
-  read-back tests for Messages and STRING content to say "round trip", and give every
-  Control Code they cover a decode test against literal Appendix G bytes.
-
-**Done when** no test has a hand-summed Checksum or an unexplained hex value, and
-every expected byte string has a citation.
-
-### 2. Memory Configuration rules
-
-Build the size 0 rule and the memory budget from [Decided, not built](#decided-not-built).
-Tests: the two size 0 errors, and the Table 55 example still encodes as it does
-today. On a 4120C (28,000 bytes), one TEXT File of 27,989 bytes passes
-(27,989 + 11 = 28,000), and one of 27,990 raises in strict mode and warns otherwise.
-
-### 3. Scheduling, sound, and addressing on `Sign`
-
-- Add `set_run_times`, `set_run_days`, `set_speaker`, `tone`, and `set_sign_address`,
-  and the order (default by Run Time) and lock (default unlocked) arguments of
-  `run_sequence`. Docstrings: Run Time and Run Day writes end a Priority TEXT File
-  (p. 20); the speaker is off by default (p. 21); the Sign can't take data while a
-  tone plays; a DIP switch address wins after a power cycle (p. 26).
-- `set_sign_address` follows the broadcast rule and then changes the `Sign`'s own
-  Recipient. Test both the refusal (nothing sent) and `broadcast=True`.
-- Tests go through `Sign` over `FakeTransport` with checksums off. Expected bytes come
-  from the field layouts on pp. 21-26 (Table 15) and Table 52 where it applies.
-- Export `RunDay`, `RunDays`, `RunOrder`, and `Weekday` from the top-level package.
-  Re-export the public protocol surface (the Commands, codes, the encoder, the
-  decoder, the reader, the requirements function) from the protocol package. Add a
-  test that imports each public name. Show scheduling in the README.
-
-### 4. Hardware checklist
-
-- One helper opens the Sign from the environment settings, for both the `sign` fixture
-  and the discovery test, so that discovery works at any baud rate and format.
-- A recording Transport keeps every byte written and read. With
-  `ALPHA_SIGN_CAPTURE=<path>`, a hardware run writes the captures, with the model,
-  firmware, and date, to a JSON file. An opt-in capture of a Network Query answer at
-  two Sign Addresses changes the address and sets it back.
-- A `witness` marker runs only with `ALPHA_SIGN_WITNESS=1` and pytest's `-s`. A
-  fixture asks the question and reads y or n.
-- Build each **(not built)** test in the [Hardware checklist](#hardware-checklist).
-  Record results in a hardware results document, and add the overrides field at the
-  first disagreement.
-
-**Done when** every checklist item has a test, automatic or witnessed.
-
-### 5. Small corrections
-
-- The `SetRunTimes` docstring says that writing it ends a Priority TEXT File, as
-  `SetRunDays` does.
-- The `SetDate` comment says that the year window is from Alpha 2.0 and later, and
-  that it applies to every Sign until the two-digit year check on Alpha 1.0 is done.
-- The single Sign Address check, the single lock byte helper, and lookup by Sign Type,
-  from [Decided, not built](#decided-not-built).
+1. **Run the hardware suite on the 4120C.** Run `-m hardware` and `-m witness` with
+   capture, erase, and re-address allowed. Record each checklist result in
+   [hardware-results.md](hardware-results.md). At the first result that disagrees
+   with the manual, add the overrides field to `SignModel` and use it in the 4120C
+   profile (extensibility rule 3).
+2. **Replace the hand-summed Response vectors with captures.** Three canned Responses
+   in the tests (two Network Query answers and one Serial Error Status Response) are
+   marked `# PROVISIONAL`. Replace each with captured bytes, cited as captured from a
+   4120C with its firmware and date. Discovery needs answers from two Sign Addresses:
+   use the re-address capture, or else one captured answer at two places in the
+   stream.
 
 ## Further Notes
 

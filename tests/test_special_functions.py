@@ -76,6 +76,27 @@ def test_memory_configuration_needs_at_least_one_file() -> None:
         SetMemoryConfiguration([])
 
 
+def test_a_string_file_cannot_have_size_0() -> None:
+    # p. 27, note 1: size "0000" is valid only for a last File that is a TEXT File.
+    with pytest.raises(ValueError, match="STRING"):
+        StringFile("T", size=0)
+
+
+def test_only_the_last_text_file_may_have_size_0() -> None:
+    # p. 27, note 1: size "0000" is valid only for the last File, and only a TEXT File.
+    with pytest.raises(ValueError, match="last"):
+        SetMemoryConfiguration([TextFile("A", size=0), TextFile("B", size=100)])
+
+
+def test_the_last_text_file_may_have_size_0() -> None:
+    files = [StringFile("T", size=16), TextFile("A", size=0)]
+
+    packet = encode_packet(ALL_SIGNS, [SetMemoryConfiguration(files)], checksum=False)
+
+    # Field layout from p. 21: label, type, lock, four-digit size, start and stop time.
+    assert bytes(packet) == SYNC + b"\x01Z00\x02E$TBL00100000AAU0000FF00\x04"
+
+
 @pytest.mark.parametrize("size", [-1, 0x10000])
 def test_file_sizes_fit_four_hex_digits(size: int) -> None:
     with pytest.raises(ValueError, match="size"):

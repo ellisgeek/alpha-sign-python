@@ -119,7 +119,8 @@ def test_literal_text_may_use_the_whole_standard_character_set() -> None:
     # Appendix G, p. 83: 20H-7FH are displayable (7EH is a half space, 7FH a block).
     text = "".join(chr(c) for c in range(0x20, 0x80))
 
-    assert Frame(Mode.HOLD, Position.FILL, text).encode() == b"\x1b0b" + text.encode("ascii")
+    # Each displayable character is its own byte, 20H-7FH in order.
+    assert Frame(Mode.HOLD, Position.FILL, text).encode() == b"\x1b0b" + bytes(range(0x20, 0x80))
 
 
 @pytest.mark.parametrize("label", ["", "AB", "\x1f", "\x7f", "é"])

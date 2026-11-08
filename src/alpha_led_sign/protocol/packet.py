@@ -4,6 +4,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from alpha_led_sign.protocol.addresses import check_sign_address
 from alpha_led_sign.protocol.commands import Command
 from alpha_led_sign.protocol.response import ResponseError, ResponseItem
 
@@ -34,12 +35,18 @@ class Recipient:
         if len(self.sign_type) != 1 or not self.sign_type.isascii():
             raise ValueError(f"Sign Type must be one ASCII character, got {self.sign_type!r}")
         if isinstance(self.address, int):
-            if not 0 <= self.address <= 0xFF:
-                raise ValueError(f"Sign Address must be 0-255, got {self.address}")
+            check_sign_address(self.address)
         elif not _ADDRESS_PATTERN.fullmatch(self.address):
             raise ValueError(
                 f"Sign Address pattern must be two hex digits or '?', got {self.address!r}"
             )
+
+    @property
+    def reaches_several(self) -> bool:
+        """True for broadcast (address 0) or a ``?`` pattern: more than one Sign may act."""
+        if isinstance(self.address, int):
+            return self.address == 0
+        return "?" in self.address or int(self.address, 16) == 0
 
     def encode(self) -> bytes:
         if isinstance(self.address, int):
@@ -125,6 +132,7 @@ __all__ = [
     "ResponseError",
     "ResponseItem",
     "ResponseReader",
+    "check_sign_address",
     "compute_checksum",
     "decode_response",
     "encode_packet",

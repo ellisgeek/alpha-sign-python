@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from enum import Enum
 from importlib import resources
 
-from alpha_led_sign.protocol.commands import Command
+from alpha_led_sign.protocol.commands import Command, SetMemoryConfiguration
+from alpha_led_sign.protocol.memory import StringFile, TextFile
 from alpha_led_sign.protocol.requirements import Capability, requires
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
@@ -116,6 +117,10 @@ class SignModel:
     """Table 3, p. 8."""
     capabilities: frozenset[Capability] | None
     """``None`` means unknown: no Capability checks for this model."""
+    file_overhead: int = 11
+    """Bytes of memory each File in a Memory Configuration uses besides its size (p. 27,
+    note 1). The readerboard project (https://github.com/mjaksn/readerboard) reports
+    13, so a model can change it once hardware shows otherwise."""
 
 
 _COLORS = frozenset({Capability.COLOR})
@@ -202,6 +207,12 @@ def get(name: str) -> SignModel:
         raise KeyError(f"unknown Sign Model {name!r}; known: {', '.join(REGISTRY)}") from None
 
 
+def by_sign_type(sign_type: str) -> SignModel | None:
+    """The registered Sign Model with this Sign Type, or None unless exactly one has it."""
+    matches = [model for model in REGISTRY.values() if model.sign_type == sign_type]
+    return matches[0] if len(matches) == 1 else None
+
+
 class UnsupportedCapability(Exception):  # noqa: N818 (public name, docs/spec.md)
     """Raised by strict validation when a Sign Model lacks something a Command uses."""
 
@@ -229,6 +240,8 @@ def _problems(model: SignModel, command: Command) -> list[str]:
     problems: list[str] = []
     if command.min_version > newest:
         problems.append(_version_problem(model, command.min_version, command))
+    if isinstance(command, SetMemoryConfiguration):
+        problems.extend(_memory_problems(model, command))
     for code in command.codes():
         version, capability = requires(code)
         if version > newest:
@@ -238,6 +251,24 @@ def _problems(model: SignModel, command: Command) -> list[str]:
         if capability not in model.capabilities:
             problems.append(f"{model.name} does not support {capability.value} ({_describe(code)})")
     return problems
+
+
+def _memory_problems(model: SignModel, command: SetMemoryConfiguration) -> list[str]:
+    """p. 27, note 1: TEXT and STRING sizes plus the overhead of each File must fit.
+
+    DOTS PICTURE sizes are left out of the sum, as the note says. Whether their overhead
+    counts is not stated, so it is counted.
+    """
+    if model.memory_bytes is None:
+        return []
+    sizes = sum(file.size for file in command.files if isinstance(file, TextFile | StringFile))
+    needed = sizes + model.file_overhead * len(command.files)
+    if needed <= model.memory_bytes:
+        return []
+    return [
+        f"{model.name} has {model.memory_bytes:,} bytes of memory, and this Memory "
+        f"Configuration needs {needed:,} ({model.file_overhead} bytes of overhead per File)"
+    ]
 
 
 def _version_problem(model: SignModel, needed: ProtocolVersion, item: object) -> str:

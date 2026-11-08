@@ -125,3 +125,14 @@ def test_data_cannot_contain_framing_bytes(byte: bytes) -> None:
 def test_recipient_rejects_invalid_sign_type_or_address(sign_type: str, address: int | str) -> None:
     with pytest.raises(ValueError, match=r"Sign Type|Sign Address"):
         Recipient(sign_type, address)
+
+
+@pytest.mark.parametrize(
+    ("address", "several"),
+    [(0, True), ("??", True), ("1?", True), ("?F", True), (1, False), (0x2F, False), ("2F", False)],
+)
+def test_broadcast_and_wildcard_recipients_reach_several_signs(
+    address: int | str, several: bool
+) -> None:
+    # p. 11: address 00 reaches every Sign of the Sign Type, and "?" matches any digit.
+    assert Recipient("Z", address).reaches_several is several

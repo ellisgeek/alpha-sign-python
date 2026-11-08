@@ -28,7 +28,7 @@ from alpha_led_sign.protocol.codes import (
     TrueDescenders,
     Wide,
 )
-from alpha_led_sign.protocol.commands import TimeFormat, Tone
+from alpha_led_sign.protocol.commands import RunDay, RunDays, RunOrder, TimeFormat, Tone, Weekday
 from alpha_led_sign.protocol.memory import (
     DotsPictureFile,
     PictureColors,
@@ -58,6 +58,9 @@ __all__ = [
     "Mode",
     "PictureColors",
     "Position",
+    "RunDay",
+    "RunDays",
+    "RunOrder",
     "RunTime",
     "SerialFormat",
     "SerialTransport",
@@ -77,6 +80,7 @@ __all__ = [
     "TrueDescenders",
     "UnsupportedCapability",
     "UnsupportedCapabilityWarning",
+    "Weekday",
     "Wide",
     "discover",
     "models",

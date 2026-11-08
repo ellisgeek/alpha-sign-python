@@ -46,7 +46,8 @@ def _check_size(size: int) -> None:
         raise ValueError(f"a File size must be 0-65535 bytes (four hex digits), got {size}")
 
 
-def _lock(locked: bool) -> bytes:
+def lock_byte(locked: bool) -> bytes:
+    """The keyboard lock byte used in Memory Configuration entries and Run Sequences."""
     return b"L" if locked else b"U"
 
 
@@ -68,7 +69,7 @@ class TextFile:
         _check_size(self.size)
 
     def encode(self) -> bytes:
-        head = f"{self.label}A".encode("ascii") + _lock(self.locked)
+        head = f"{self.label}A".encode("ascii") + lock_byte(self.locked)
         return head + f"{self.size:04X}".encode("ascii") + self.run_time.encode()
 
 
@@ -82,6 +83,9 @@ class StringFile:
     def __post_init__(self) -> None:
         check_file_label(self.label)
         _check_size(self.size)
+        if self.size == 0:
+            # p. 27, note 1: only a last TEXT File may have size 0.
+            raise ValueError("a STRING File cannot have size 0")
 
     def encode(self) -> bytes:
         return f"{self.label}BL{self.size:04X}0000".encode("ascii")
@@ -111,7 +115,7 @@ class DotsPictureFile:
             raise ValueError("DOTS PICTURE rows and columns must each be 0-255")
 
     def encode(self) -> bytes:
-        head = f"{self.label}D".encode("ascii") + _lock(self.locked)
+        head = f"{self.label}D".encode("ascii") + lock_byte(self.locked)
         size = f"{self.rows:02X}{self.columns:02X}{self.colors.value}"
         return head + size.encode("ascii")
 
