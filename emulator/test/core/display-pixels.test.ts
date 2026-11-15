@@ -85,8 +85,9 @@ describe("golden pixels per font", () => {
     it(`1AH "${code}": ${name}`, async () => {
       await golden(
         `font-${name}`,
-        `1AH "${code}" ${name}, HOLD fill`,
-        pixelsAt(`${ESC}0b\x1a${code}Ag 129`, 0, 100),
+        // Middle: in Fill a two-line Sign draws fonts over 7 rows 7 high (p. 96).
+        `1AH "${code}" ${name}, HOLD middle`,
+        pixelsAt(`${ESC} b\x1a${code}Ag 129`, 0, 100),
       );
     });
   }

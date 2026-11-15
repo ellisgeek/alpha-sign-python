@@ -26,6 +26,11 @@ export interface EmulatorModel {
    * A red-only model lists only the colors it can show.
    */
   palette: PaletteColor[];
+  /**
+   * The palette index each DOTS PICTURE pixel code 0-8 draws as, when the Sign shows
+   * fewer colors than the codes. Absent: a code past the palette draws red.
+   */
+  pictureColors?: readonly number[];
   /** Memory Pool size in bytes. */
   memoryBytes: number;
   /** Bytes of the pool no Memory Configuration can use. The manual names none. */
@@ -66,6 +71,7 @@ export const RED_PALETTE: PaletteColor[] = [OFF, { name: "red", rgb: "#ff2a1a" }
  * - 28,872 bytes of memory, as a real 4120C reported in General Information
  *   (docs/hardware-results.md). The brochure says 28,000. It keeps 9 bytes back,
  *   and reports 5 bytes less free than File A's room (same source).
+ * - DOTS PICTURE codes 4-8 fold into red, green, and amber (same source).
  * - 26 NULs before each Response, in every capture from a real 4120C (same source).
  *   Table 14 shows 20.
  * - EZKEY II and Alpha 1.0, not 2.0 or 3.0 (Table 3, p. 8, "4000 Series").
@@ -80,6 +86,9 @@ export const model4120C: EmulatorModel = {
   rows: 16,
   lines: 2,
   palette: TRICOLOR_PALETTE,
+  // A real 4120C drew dim red as red, dim green as green, and brown, orange, and
+  // yellow as amber (docs/hardware-results.md).
+  pictureColors: [0, 1, 2, 3, 1, 2, 3, 3, 3],
   memoryBytes: 28872,
   memoryReserved: 9,
   freeShortfall: 5,

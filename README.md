@@ -54,6 +54,10 @@ model. Values are the enum member names in lowercase. `{frame MODE POSITION}`
 starts a Frame (`{frame special snow}`, `{frame graphic fireworks}`); `{{` and
 `}}` are literal braces. A string inside a list of Segments is never parsed.
 
+The default position is `fill`. On a two-line Sign such as the 4000 Series, Fill,
+Top, and Bottom show fonts at most 7 rows high, so use `{frame hold middle}` for
+`{font full_height}`; the library warns otherwise.
+
 ## Pictures
 
 ```python

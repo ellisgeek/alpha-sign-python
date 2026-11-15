@@ -236,6 +236,9 @@ class Sign:
     def tone(self, frequency: int, duration: int, repeats: int = 0) -> None:
         """Play a tone: ``frequency`` 0-254, ``duration`` 1-15 tenths of a second.
 
+        The manual gives no scale for ``frequency``, and a 4120C ignores it: every value
+        plays at the same pitch (docs/hardware-results.md).
+
         The Sign can't take data while the tone plays, so this waits until the tone
         has finished, counting the first play and every repeat.
         """

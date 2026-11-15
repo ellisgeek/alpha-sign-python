@@ -19,6 +19,7 @@ import {
   frameText,
   type LayoutContext,
   newBitmap,
+  PICTURE_ROWS,
   paginate,
   plainRun,
   type StyledRun,
@@ -116,11 +117,23 @@ function buildSteps(state: SignState, model: EmulatorModel, ctx: LayoutContext):
         });
         return;
       }
-      const text = frameText(frame.segments, ctx);
+      // p. 95-96 (7.10.3.2): on a two-line Sign only Middle shows fonts taller than
+      // 7 rows, and pictures past the Fill position's 8 rows (PICTURE_ROWS).
+      const middle = model.lines !== 2 || !["top", "bottom", "fill"].includes(position);
+      const frameCtx: LayoutContext = {
+        ...ctx,
+        sevenHighOnly: !middle,
+        pictureRows: middle ? model.rows : PICTURE_ROWS,
+      };
+      const text = frameText(frame.segments, frameCtx);
       const step = stepMs(text.speed);
       const holdMs = text.noHold ? 0 : HOLD_MS;
       for (const page of text.pages) {
-        const drawn = page.map((runs) => ({ runs, bitmap: drawLine(runs), height: 0 }));
+        const drawn = page.map((runs) => ({
+          runs,
+          bitmap: drawLine(runs, frameCtx.pictureRows),
+          height: 0,
+        }));
         for (const d of drawn) d.height = d.bitmap.height;
         for (const sub of paginate(drawn, height)) {
           const bitmaps = sub.map((d) => d.bitmap);
@@ -302,6 +315,7 @@ export function buildDisplay(
     clock: clockAt(state.clock, nowMs),
     readings,
     paletteSize: model.palette.length,
+    pictureColors: model.pictureColors,
     displayRows: model.rows,
   };
   const steps = buildSteps(state, model, ctx);

@@ -67,34 +67,38 @@ describe("Write SMALL DOTS PICTURE File", () => {
     expect(sign.sign.snapshot().files.P?.data).toBe("0303120\r345\r000\r");
   });
 
-  it("drops rows sent sooner than 100 ms after the Width (p. 40)", () => {
+  it("keeps rows sent sooner than 100 ms after the Width, as a real 4120C did", () => {
+    // docs/hardware-results.md, "DOTS PICTURE pause": p. 40 asks for 100 ms, but the
+    // 4120C read back a picture written without it intact.
     const sign = oneSign();
+    sign.send(CONFIGURE);
+    writePicture(sign, "P", "0F09", ARROW, 20);
+    expect(sign.sign.snapshot().files.P?.data).toBe(`0F09${ARROW}`);
+  });
+
+  it("applies Reading missingDotsPause: drop, as p. 40 reads", () => {
+    const sign = oneSign({ missingDotsPause: "drop" });
     sign.send(CONFIGURE);
     writePicture(sign, "P", "0F09", ARROW, 20);
     expect(sign.sign.snapshot().files.P?.data).toBe("");
     expect(sign.sign.snapshot().ignored.map((i) => i.reason)).toEqual(["missing-dots-pause"]);
   });
 
-  it("applies Reading missingDotsPause", () => {
-    const sign = oneSign({ missingDotsPause: "accept" });
+  it("keeps a picture of another size than its File as sent, as a real 4120C did", () => {
+    // docs/hardware-results.md, "DOTS PICTURE size against its File": a 2x2 picture
+    // written into a 15x9 File read back as 0202 with rows 11 and 11.
+    const sign = oneSign();
     sign.send(CONFIGURE);
-    writePicture(sign, "P", "0F09", ARROW, 20);
-    expect(sign.sign.snapshot().files.P?.data).toBe(`0F09${ARROW}`);
+    writePicture(sign, "P", "0202", "11\r11\r");
+    expect(sign.sign.snapshot().files.P?.data).toBe("020211\r11\r");
   });
 
-  it("drops a picture whose size does not match its File (p. 39: it must match)", () => {
-    const sign = oneSign();
+  it("applies Reading dotsPictureSize: drop, as p. 39 reads (it must match)", () => {
+    const sign = oneSign({ dotsPictureSize: "drop" });
     sign.send(CONFIGURE);
     writePicture(sign, "P", "0202", "11\r11\r");
     expect(sign.sign.snapshot().files.P?.data).toBe("");
     expect(sign.sign.snapshot().ignored.map((i) => i.reason)).toEqual(["dots-size-mismatch"]);
-  });
-
-  it("applies Reading dotsPictureSize: a mismatched picture is kept as sent", () => {
-    const sign = oneSign({ dotsPictureSize: "accept" });
-    sign.send(CONFIGURE);
-    writePicture(sign, "P", "0202", "11\r11\r");
-    expect(sign.sign.snapshot().files.P?.data).toBe("020211\r11\r");
   });
 
   it("ignores a write to a File that is not a DOTS PICTURE File", () => {
@@ -159,6 +163,60 @@ describe("Call SMALL DOTS PICTURE (14H, p. 81)", () => {
     const lit = (row: string, from: number, to: number) => /[^.]/.test(row.slice(from, to));
     expect(rows.some((row) => lit(row, 0, start))).toBe(true);
     expect(rows.some((row) => lit(row, start + 9, row.length))).toBe(true);
+  });
+
+  it("cuts the picture to 8 rows, its top level with the text's, as a real 4120C did", () => {
+    // docs/hardware-results.md, "Where a called DOTS PICTURE is drawn": beside "AB" and
+    // "CD" the 4120C showed rows 0-7 of the 15-row arrow; the picture's top was level
+    // with the 7-high letters' top, its bottom one row below theirs.
+    const display = withArrow("\x1b0bAB\x14PCD");
+    const rows = art(display.pixels).split("\n");
+    const tipRow = rows.findIndex((row) => row.includes("RRRRRRRRG"));
+    const start = rows[tipRow]?.indexOf("RRRRRRRRG") ?? -1;
+    const arrow = rows.map((row) => row.slice(start, start + 9));
+    const letters = rows.map((row) => row.slice(0, start));
+    const litRows = (part: string[]) => part.flatMap((row, i) => (/[^.]/.test(row) ? [i] : []));
+    // Rows 2-7 of the arrow are lit; rows 8-14 are not drawn.
+    expect(arrow.slice(tipRow - 5, tipRow + 1)).toEqual([
+      "...R.....",
+      "...RR....",
+      "...RRR...",
+      "...RRRR..",
+      "RRRRRRRR.",
+      "RRRRRRRRG",
+    ]);
+    expect(litRows(arrow)).toEqual([0, 1, 2, 3, 4, 5].map((i) => tipRow - 5 + i));
+    // Arrow row 0 is tipRow - 7: the letters' top row. Their bottom is tipRow - 1.
+    expect(litRows(letters)).toEqual([0, 1, 2, 3, 4, 5, 6].map((i) => tipRow - 7 + i));
+  });
+
+  // docs/hardware-results.md, "Where a called DOTS PICTURE is drawn": a 15-row bar
+  // between "AB" and "CD" on a 4120C, counted from the display's top row.
+  it.each([
+    ["five high", "1", [6, 7, 8, 9, 10]],
+    ["seven high", "3", [4, 5, 6, 7, 8, 9, 10]],
+  ])(
+    "puts the picture in rows 4-11 and %s text on row 10, as a real 4120C did",
+    (_, code, textRows) => {
+      const state = stateWith({ text: { A: `\x1b0b\x1a${code}AB\x14PCD` } });
+      state.files.P = { label: "P", type: "DOTS", data: `0F01${"1\r".repeat(15)}` };
+      const rows = art(buildDisplay(state, model4120C, RESTART_MS + 1).pixels).split("\n");
+      // Row 11 is below the text, so only the bar is lit there.
+      const column = rows[11]?.indexOf("R") ?? -1;
+      const lit = (from: number, to: number) =>
+        rows.flatMap((row, i) => (/[^.]/.test(row.slice(from, to)) ? [i] : []));
+      expect(lit(column, column + 1)).toEqual([4, 5, 6, 7, 8, 9, 10, 11]);
+      expect(lit(0, column)).toEqual(textRows);
+    },
+  );
+
+  it("draws codes 4-8 in the 4120C's three colors, as a real 4120C did", () => {
+    // docs/hardware-results.md, "DOTS PICTURE colors 4-8": dim red showed as red, dim
+    // green as green, and brown, orange, and yellow all as yellow (amber).
+    const state = stateWith({ text: { A: "\x1b0b\x14P" } });
+    state.files.P = { label: "P", type: "DOTS", data: "0109012345678\r" };
+    const display = buildDisplay(state, model4120C, RESTART_MS + 1);
+    expect(art(display.pixels)).toContain("RGARGAAA");
   });
 
   it("draws nothing for a label that is not a DOTS PICTURE File", () => {

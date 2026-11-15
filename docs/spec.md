@@ -353,6 +353,8 @@ to one Sign Model.
    classes. The Packet encoder does not change.
 6. **Validation is advisory by default.** The manual's tables have gaps, so strict
    mode raises and advisory mode warns and sends anyway.
+   Validation also reports a font taller than 7 rows in the Top, Bottom, or Fill
+   position on a two-line model, which the Sign draws 7 high (p. 96).
 7. **A generic model exists.** Sign Type `Z`, Alpha 1.0, no Capability checks. It
    works with any Alpha Sign before it has a profile.
 
@@ -582,17 +584,20 @@ manual brings in a model field or, for a Capability, the overrides field
 |---|---|---|
 | Network Query answers: the manual gives only the `UAAZ` data. | Each arrives as a Response Packet (`E-UAAZ` with a Checksum), like other special function reads. | Automatic |
 | General Information: the manual says 28 or 29 characters, but its field list adds up to 29 plus an optional NUL. | 29 characters. | Automatic |
-| Programmable tones: whether `R` (repeats) counts the first play. | It doesn't: the library waits for `R + 1` plays. | Witnessed: "Did you hear 3 plays?" |
+| Programmable tones: whether `R` (repeats) counts the first play. | It doesn't: the library waits for `R + 1` plays. A 4120C agrees. | Witnessed: "Did you hear 3 plays?" |
+| Programmable tones: what the frequency byte does; p. 22 gives no scale. | Sent as given. A 4120C plays every value at one pitch. | Witnessed: long tones across 00-FE. |
 | NEWS FLASH and TRUMPET: Table 66 gives `"A"`/`"B"` and also hex 3AH/3BH. Appendix G limits both to the BetaBrite 1036. | The letters. No BetaBrite 1036 is planned for testing, so this assumption stays unchecked. | Witnessed: show each form. On a Sign whose profile leaves them out, neither form may play. |
 | NEW_PAGE and double height on the 4000 Series: missing from Tables 69 and 70. | Not supported. | Witnessed: show each. |
 | Two-digit year on Alpha 1.0: p. 28, note 15 gives the 1997-2096 window for Alpha 2.0 and later only. | The window applies to every Sign. | Witnessed: set 2026-11-07, show the date. |
 | Per-File overhead: the manual says 11 bytes, readerboard reports 13. Whether DOTS PICTURE Files count. | 11 bytes, DOTS PICTURE included. On the 4120C, DOTS PICTURE sizes count too, as its model says. | Automatic, needs erase permission: measure free memory with one File and with three, and with and without a DOTS PICTURE File. |
 | Total memory: General Information against the model's memory size. | 28,000 bytes on the 4000 Series (brochure). The 4120C reported 28,872, and its model now uses that figure. | Automatic, with the overhead test. |
-| DOTS PICTURE colors 4-8: "some signs do not support the full range" (p. 40). | Not checked on a tricolor Sign. | Witnessed: eight bands, one per color; record how many are lit and distinct. |
-| DOTS PICTURE size against its Memory Configuration entry: "must match" (p. 39). | Not checked. | Automatic, needs erase permission: write a 2x2 picture into a 9x15 File and record what reads back. |
-| The 100 ms pause after a DOTS PICTURE's Width (p. 40). | Needed; always sent. | Automatic, needs erase permission: write without it and record whether it reads back intact. |
-| A DOTS PICTURE read: the manual gives no worked Response. | Rows end in CR; the decoder accepts the forms p. 40 allows. | Automatic, needs erase permission: write Table 60's arrow and read it back (a capture). |
-| Where a called DOTS PICTURE is drawn among text: the manual doesn't say. | At the text cursor. | Witnessed: text, a picture, text. |
+| DOTS PICTURE colors 4-8: "some signs do not support the full range" (p. 40). | Not checked on a tricolor Sign. A 4120C lit all 8 in its 3 colors: 4 as red, 5 as green, 6-8 as amber. | Witnessed: eight bands, one per color; record how many are lit and distinct. |
+| DOTS PICTURE size against its Memory Configuration entry: "must match" (p. 39). | Not checked. A 4120C kept a picture of another size as sent. | Automatic, needs erase permission: write a 2x2 picture into a 9x15 File and record what reads back. |
+| The 100 ms pause after a DOTS PICTURE's Width (p. 40). | Needed; always sent. A 4120C did not need it at 9600 baud. | Automatic, needs erase permission: write without it and record whether it reads back intact. |
+| A DOTS PICTURE read: the manual gives no worked Response. | Rows end in CR; the decoder accepts the forms p. 40 allows. A 4120C's answer is a test vector. | Automatic, needs erase permission: write Table 60's arrow and read it back (a capture). |
+| Where a called DOTS PICTURE is drawn among text: the manual doesn't say. | At the text cursor, in an 8-row line centered on the display, cut to its top 8 rows whatever the font; five and seven high text ends one row above the line's bottom (a 4120C). | Witnessed, per font: text, a 15-dot bar, text; count the bar's dots and the unlit rows above it and above the text. |
+| A called DOTS PICTURE in Middle: p. 95 cuts only past 16 rows, p. 96 past 15. | All of a 15-row picture shows, at the top of its line. A 4120C agrees. | Witnessed: full height text, a 15-dot bar, text, in Middle; count the bar's dots. |
+| Fonts taller than 7 rows in Top, Bottom, or Fill on a two-line Sign: "size down" to 7-high (p. 96). | As the manual says; validation reports them and suggests Middle. A 4120C agrees. | Witnessed: full height in Fill, then in Middle. |
 | Memory Configuration limit: whether the Sign takes exactly what note 1 allows. | The model's `memory_needed`, which on the 4120C adds 9 reserved bytes. | Automatic, needs erase permission: the largest File A beside File B is taken, one byte more is not. |
 
 ## Out of Scope
@@ -616,9 +621,8 @@ manual brings in a model field or, for a Capability, the overrides field
 
 Everything left needs a real Sign. Delete each item when it is done.
 
-1. **Programmable tone repeats.** Run the witnessed tone test
-   (`-m witness -s -k tone_repeats`) and record whether `R` counts the first play in
-   [hardware-results.md](hardware-results.md).
+Nothing on the hardware checklist is open. New hardware findings go in
+[hardware-results.md](hardware-results.md).
 
 ## Further Notes
 

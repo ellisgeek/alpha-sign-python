@@ -35,9 +35,25 @@ export interface LayoutContext {
   readings: Readings;
   /** Number of palette entries; indexes past the end draw as 1 (red-only models). */
   paletteSize: number;
+  /** The palette index for each DOTS PICTURE pixel code, if the model folds them. */
+  pictureColors?: readonly number[] | undefined;
   /** Display height in pixels; picks the 15- or 16-high full height font. */
   displayRows: number;
+  /**
+   * Fonts taller than 7 rows are drawn 7 high, as a two-line Sign does in the Top,
+   * Bottom, and Fill positions (p. 96, 7.10.3.2.5).
+   */
+  sevenHighOnly?: boolean;
+  /** Rows of a called picture that show; see PICTURE_ROWS. */
+  pictureRows?: number;
 }
+
+/**
+ * The 7-high font a two-line Sign draws in place of a taller one (p. 96: "15 high
+ * fancy characters would be replaced by 7 high fancy characters"). Ten high becoming
+ * seven high standard is an assumption; the 4000 Series has no ten high font.
+ */
+const SIZED_DOWN: Readonly<Record<string, string>> = { "6": "3", "8": "5", "9": "3" };
 
 // Color cycles for the multi-color codes. Approximations: the manual names
 // them (Appendix G, 1CH) without saying how they look.
@@ -166,7 +182,10 @@ export function frameText(segments: Segment[], ctx: LayoutContext): FrameText {
           style.colorCode = seg.code;
           break;
         case "font":
-          style.face = fontForCode(seg.code, ctx.displayRows);
+          style.face = fontForCode(
+            ctx.sevenHighOnly ? (SIZED_DOWN[seg.code] ?? seg.code) : seg.code,
+            ctx.displayRows,
+          );
           break;
         case "wide":
           style.wide = seg.on;
@@ -199,7 +218,7 @@ export function frameText(segments: Segment[], ctx: LayoutContext): FrameText {
           break;
         }
         case "picture": {
-          const bitmap = pictureBitmap(ctx.files[seg.label], ctx.paletteSize);
+          const bitmap = pictureBitmap(ctx.files[seg.label], ctx.paletteSize, ctx.pictureColors);
           if (bitmap) {
             currentLine().push({
               text: "",
@@ -237,7 +256,11 @@ export function frameText(segments: Segment[], ctx: LayoutContext): FrameText {
  * each ended by <CR> (see commands/dots-picture.ts). Null if `file` is not a written
  * DOTS PICTURE File. A color past the palette draws as red, as text does.
  */
-function pictureBitmap(file: StoredFile | undefined, paletteSize: number): Bitmap | null {
+function pictureBitmap(
+  file: StoredFile | undefined,
+  paletteSize: number,
+  pictureColors?: readonly number[],
+): Bitmap | null {
   if (file?.type !== "DOTS" || file.data.length < 4) return null;
   const height = Number.parseInt(file.data.slice(0, 2), 16);
   const width = Number.parseInt(file.data.slice(2, 4), 16);
@@ -248,7 +271,8 @@ function pictureBitmap(file: StoredFile | undefined, paletteSize: number): Bitma
     const row = rows[y] ?? "";
     for (let x = 0; x < width; x++) {
       const code = Number(row[x] ?? "0");
-      out.colors[y * width + x] = Number.isInteger(code) && code < paletteSize ? code : 1;
+      const folded = Number.isInteger(code) ? (pictureColors?.[code] ?? code) : 1;
+      out.colors[y * width + x] = folded < paletteSize ? folded : 1;
     }
   }
   return out;
@@ -310,30 +334,45 @@ function styledGlyph(run: StyledRun, ch: string) {
 const CHAR_GAP = 1;
 /** Lines are one row apart. */
 const LINE_GAP = 1;
+/**
+ * In the Fill position a called DOTS PICTURE shows at most its top 8 rows, from the
+ * top of its line. On a real 4120C the line was 8 rows, with five and seven high text
+ * ending one row above its bottom (docs/hardware-results.md). p. 96 says 7 rows.
+ */
+export const PICTURE_ROWS = 8;
 
-/** One line drawn on its own, glyphs sitting on a common bottom row. */
-export function drawLine(line: StyledRun[]): Bitmap {
+/**
+ * One line drawn on its own, glyphs sitting on a common bottom row. A called picture
+ * shows its top `pictureRows` rows.
+ */
+export function drawLine(line: StyledRun[], pictureRows = PICTURE_ROWS): Bitmap {
   const items = line.flatMap((run): { run: StyledRun; g: Glyph | Bitmap }[] =>
     run.pictureBitmap
       ? [{ run, g: run.pictureBitmap }]
       : [...run.text].map((ch) => ({ run, g: styledGlyph(run, ch) })),
   );
-  const height = Math.max(DEFAULT_FONT.height, ...items.map(({ g }) => g.height));
+  const text = items.filter(({ g }) => !("colors" in g));
+  const textHeight = Math.max(DEFAULT_FONT.height, ...text.map(({ g }) => g.height));
+  const pictureHeight = Math.max(
+    0,
+    ...items.flatMap(({ g }) => ("colors" in g ? [Math.min(g.height, pictureRows)] : [])),
+  );
+  const height = Math.max(textHeight, pictureHeight);
   const width = Math.max(0, items.reduce((w, { g }) => w + g.width + CHAR_GAP, 0) - CHAR_GAP);
   const out = newBitmap(width, height);
   let x0 = 0;
   for (const { run, g } of items) {
     if ("colors" in g) {
-      // A called picture sits at the top of the line, in its own colors. Assumption:
-      // the manual does not say where a picture goes among text.
+      // A called picture sits at the top of the line, in its own colors, cut to
+      // pictureRows.
       const picture = newBitmap(g.width, g.height);
       picture.colors.set(g.colors);
       if (run.flash) picture.flash.fill(1);
-      blit(out, picture, x0, 0);
+      blit(out, picture, x0, 0, pictureRows);
       x0 += g.width + CHAR_GAP;
       continue;
     }
-    const y0 = height - g.height;
+    const y0 = textHeight - g.height;
     for (let y = 0; y < g.height; y++) {
       for (let x = 0; x < g.width; x++) {
         if (!g.bits[y * g.width + x]) continue;
@@ -347,9 +386,9 @@ export function drawLine(line: StyledRun[]): Bitmap {
   return out;
 }
 
-/** Copies `src` into `dst` at (x, y), clipped; only lit pixels are copied. */
-export function blit(dst: Bitmap, src: Bitmap, x: number, y: number): void {
-  for (let sy = 0; sy < src.height; sy++) {
+/** Copies the top `rows` of `src` into `dst` at (x, y), clipped; only lit pixels are copied. */
+export function blit(dst: Bitmap, src: Bitmap, x: number, y: number, rows = src.height): void {
+  for (let sy = 0; sy < Math.min(rows, src.height); sy++) {
     const dy = y + sy;
     if (dy < 0 || dy >= dst.height) continue;
     for (let sx = 0; sx < src.width; sx++) {

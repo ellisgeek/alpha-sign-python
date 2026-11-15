@@ -103,8 +103,8 @@ describe("Readings", () => {
       missingStxPause: "drop",
       networkQueryFraming: "response-packet",
       oversizedWrite: "measured",
-      missingDotsPause: "drop",
-      dotsPictureSize: "drop",
+      missingDotsPause: "accept",
+      dotsPictureSize: "accept",
     });
   });
 

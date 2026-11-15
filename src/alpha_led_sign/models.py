@@ -10,7 +10,13 @@ from dataclasses import dataclass
 from enum import Enum
 from importlib import resources
 
-from alpha_led_sign.protocol.commands import Command, SetMemoryConfiguration, WriteDotsPicture
+from alpha_led_sign.protocol.codes import Font, Position
+from alpha_led_sign.protocol.commands import (
+    Command,
+    SetMemoryConfiguration,
+    WriteDotsPicture,
+    WriteText,
+)
 from alpha_led_sign.protocol.memory import DotsPictureFile, MemoryFile
 from alpha_led_sign.protocol.pictures import PixelColor
 from alpha_led_sign.protocol.requirements import Capability, requires
@@ -280,6 +286,8 @@ def _problems(model: SignModel, command: Command) -> list[str]:
         problems.extend(_memory_problems(model, command))
     if isinstance(command, WriteDotsPicture):
         problems.extend(_picture_problems(model, command))
+    if isinstance(command, WriteText):
+        problems.extend(_position_problems(model, command))
     for code in command.codes():
         version, capability = requires(code)
         if version > newest:
@@ -305,6 +313,29 @@ def _memory_problems(model: SignModel, command: SetMemoryConfiguration) -> list[
         f"{model.name} has {model.memory_bytes:,} bytes of memory, and this Memory "
         f"Configuration needs {needed:,} ({model.file_overhead} bytes of overhead per File)"
     ]
+
+
+# Fonts taller than 7 rows (Appendix G, p. 82; Appendix O): ten high and the 15/16-row
+# sets.
+_TALL_FONTS = frozenset({Font.TEN_HIGH, Font.FULL_HEIGHT, Font.FULL_HEIGHT_FANCY})
+_SEVEN_HIGH_POSITIONS = frozenset({Position.TOP, Position.BOTTOM, Position.FILL})
+
+
+def _position_problems(model: SignModel, command: WriteText) -> list[str]:
+    """p. 96, 7.10.3.2.5: in the Top, Bottom, or Fill position a two-line Sign "will
+    'size down'" a font larger than 7-high. Only Middle shows it at full size."""
+    if model.lines != 2:
+        return []
+    problems: list[str] = []
+    for frame in command.message.frames:
+        if frame.mode is None or frame.position not in _SEVEN_HIGH_POSITIONS:
+            continue
+        for font in sorted(_TALL_FONTS.intersection(frame.content), key=lambda f: f.value):
+            problems.append(
+                f"{model.name} shows {_describe(font)} as 7-high in the "
+                f"{frame.position.name} position (p. 96); use Position.MIDDLE"
+            )
+    return problems
 
 
 def _picture_problems(model: SignModel, command: WriteDotsPicture) -> list[str]:

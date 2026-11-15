@@ -325,14 +325,14 @@ hardware checklist or to an assumption written here.
 | Per-File overhead | 11 or 13 bytes | 11 (p. 27, note 1) |
 | DOTS PICTURE size in the memory budget | counted (2 + rows x 2 x ceil(columns / 8) bytes) or not | counted (a real 4120C; p. 27, note 1 leaves it out) |
 | General Information length | 28, 29, or 29 plus NUL | 29 (p. 29 field list) |
-| Tone repeats | `R` plays or `R + 1` plays | `R + 1` (the library's assumption, p. 22 unclear) |
+| Tone repeats | `R` plays or `R + 1` plays | `R + 1` (a real 4120C; p. 22 unclear) |
 | NEWS FLASH and TRUMPET form | letters, hex 3AH/3BH, both, or none | none (a real 4120C played neither; Appendix G limits them to the BetaBrite 1036) |
 | NEW_PAGE and double height on the 4000 Series | drawn or ignored | ignored (Tables 69, 70; a real 4120C did neither) |
 | Two-digit year on Alpha 1.0 | 1997-2096 window or 19xx | window (p. 28, note 15; a real 4120C used it) |
 | Missing STX pause | drop the nested Command, or accept it | drop (p. 11) |
 | Network Query answer framing | Response Packet with Checksum, or bare data | Response Packet (a real 4120C; p. 32 unclear) |
-| Missing DOTS PICTURE pause | drop the write, or accept it, when the rows come sooner than 100 ms after the Width | drop (p. 40) |
-| DOTS PICTURE size against its File | drop a picture whose size differs from its Memory Configuration entry, or accept it as sent | drop (p. 39: it "must match") |
+| Missing DOTS PICTURE pause | drop the write, or accept it, when the rows come sooner than 100 ms after the Width | accept (a real 4120C; p. 40 asks for the pause) |
+| DOTS PICTURE size against its File | drop a picture whose size differs from its Memory Configuration entry, or accept it as sent | accept (a real 4120C; p. 39 says it "must match") |
 | Oversized write | measured, truncate, or ignore | measured: a TEXT File keeps its size + 1 bytes and flags a buffer overflow; a STRING File is emptied and flags an illegal command (a real 4120C; the manual does not say) |
 
 When hardware-results.md gets a row, the default for that Sign Model changes to the
@@ -559,9 +559,17 @@ PROVISIONAL in the code are marked there too.
   reads it: LF dropped, each row padded with off pixels or cut to the Width, rows never
   sent off. A read (`J`) answers with that, each row ended by CR. Before any write it
   answers with the configured size and no rows. A write blanks the display (p. 39).
-  A called picture (14H) is drawn at the text cursor, at the top of its line, in its own
-  colors; a color past the model's palette draws red. The manual does not say where a
-  picture goes among text; a witnessed hardware test checks it.
+  A called picture (14H) is drawn at the text cursor in its own colors, cut to its
+  top 8 rows, at the top of an 8-row line; text up to seven high ends one row above
+  the line's bottom, as a real 4120C did (docs/hardware-results.md). That is the
+  Fill position; in Middle a picture shows up to the display's height, at the top of
+  its line (p. 95), as a real 4120C did. A model's `pictureColors` folds codes it can't
+  show into ones it can: the 4120C shows 4 as red, 5 as green, and 6-8 as amber. Without it, a
+  code past the palette draws red.
+- **Fonts on a two-line Sign.** In the Top, Bottom, and Fill positions a font taller
+  than 7 rows is drawn 7 high: full height as seven high, full height fancy as seven
+  high fancy (p. 96), and ten high as seven high (an assumption). Middle draws them full
+  size (p. 95). A real 4120C did both (docs/hardware-results.md).
 - **Colors.** Autocolor and the default color are drawn red.
 - **Run Sequence.** An empty Run Sequence runs every TEXT File in Label order.
 - **Where the display starts.**

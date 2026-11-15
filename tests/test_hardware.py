@@ -25,6 +25,9 @@ Optional settings:
 
       ALPHA_SIGN_PORT=... ALPHA_SIGN_WITNESS=1 uv run pytest -m witness -s
 
+Some tests only record what the Sign did and print it; pytest hides that unless you
+add ``-rP`` (or ``-s``).
+
 Each test maps to an item on the hardware checklist in docs/spec.md. Record the
 results in docs/hardware-results.md.
 """
@@ -50,6 +53,7 @@ from alpha_led_sign import (
     DotsPictureFile,
     DotsPictureRef,
     DoubleHigh,
+    Font,
     Frame,
     Message,
     Mode,
@@ -66,6 +70,7 @@ from alpha_led_sign import (
     discover,
     models,
 )
+from alpha_led_sign.models import UnsupportedCapabilityWarning
 from alpha_led_sign.protocol.commands import (
     Command,
     Tone,
@@ -602,14 +607,109 @@ def test_the_two_digit_year_is_read_as_20xx(sign: Sign, ask: Callable[[str, str]
 def test_a_dots_picture_is_drawn_between_the_text_around_it(
     sign: Sign, ask: Callable[[str, str], str]
 ) -> None:
-    # Checklist: the manual doesn't say where a called picture goes. The emulator draws
-    # it at the text cursor.
+    # Checklist: the manual doesn't say where a called picture goes. A 4120C drew it at
+    # the text cursor, cut to the arrow's top 8 rows: the head's upper half and the
+    # shaft's top two rows, with the green tip at the bottom right.
     sign.configure_memory([TextFile("A", size=64), _picture_file(sign, "P", ARROW)])
     sign.write_dots_picture("P", ARROW)
 
     sign.write_text("A", Frame(Mode.HOLD, Position.FILL, ["AB", DotsPictureRef("P"), "CD"]))
 
-    assert ask("Was an arrow drawn between AB and CD?", "yn") == "y"
+    print("\nExpected between AB and CD: the top half of a right arrow, a green dot at its")
+    print("bottom right. The arrow's first two rows are blank, so its top lit dot is two")
+    print("rows below the letters' top; its bottom row is one row below the letters'.")
+    assert ask("Is that what the Sign shows?", "yn") == "y"
+
+
+# A column of 15 lit dots, easy to count. No Sign line is taller than 16 rows.
+BAR = DotsPicture.parse("\n".join(["1"] * 15))
+
+
+@pytest.mark.witness
+@needs_witness
+@needs_erase
+@pytest.mark.parametrize(("font", "text_height"), [(Font.FIVE_HIGH, 5), (Font.SEVEN_HIGH, 7)])
+def test_a_dots_picture_is_cut_to_8_rows(
+    sign: Sign,
+    ask: Callable[[str, str], str],
+    request: pytest.FixtureRequest,
+    font: Font,
+    text_height: int,
+) -> None:
+    # Checklist: the manual doesn't say where a called picture goes, and p. 96 says Fill
+    # shows at most 7 of its rows. On a 4120C the line holding a picture is 8 rows,
+    # centered on the display: the picture fills it from the top, cut to 8 rows, and
+    # five high and seven high text ends one row above its bottom. (Full height is
+    # seven high in Fill, p. 96; TEN_HIGH is not on the 4000 Series, Table 69.)
+    sign.configure_memory([TextFile("A", size=64), _picture_file(sign, "P", BAR)])
+    sign.write_dots_picture("P", BAR)
+    sign.write_text("A", Frame(Mode.HOLD, Position.FILL, [font, "AB", DotsPictureRef("P"), "CD"]))
+
+    tall, bar_top, text_top = _count_the_bar(ask, request, font.name)
+
+    rows = sign.model.rows or 16
+    assert (tall, bar_top) == (8, (rows - 8) // 2)
+    assert text_top == bar_top + 7 - text_height
+
+
+@pytest.mark.witness
+@needs_witness
+@needs_erase
+def test_a_dots_picture_in_middle_is_not_cut_to_8_rows(
+    sign: Sign, ask: Callable[[str, str], str], request: pytest.FixtureRequest
+) -> None:
+    # Checklist: p. 95 says Middle is one line 16 dots high and cuts only a picture
+    # taller than that; p. 96 says 15. A 4120C showed all 15 rows of the bar beside
+    # full height text, from the display's top row, level with the letters' top.
+    sign.configure_memory([TextFile("A", size=64), _picture_file(sign, "P", BAR)])
+    sign.write_dots_picture("P", BAR)
+    sign.write_text(
+        "A", Frame(Mode.HOLD, Position.MIDDLE, [Font.FULL_HEIGHT, "AB", DotsPictureRef("P"), "CD"])
+    )
+
+    tall, bar_top, text_top = _count_the_bar(ask, request, "FULL_HEIGHT in MIDDLE")
+
+    assert (tall, bar_top, text_top) == (len(BAR.rows), 0, 0)
+
+
+def _count_the_bar(
+    ask: Callable[[str, str], str], request: pytest.FixtureRequest, case: str
+) -> tuple[int, int, int]:
+    """Ask for the bar's height and the unlit rows above it and above the A; record them."""
+    print(f"\n{case}. Count in hex (a = 10, b = 11, ...).")
+    tall = int(ask("How many dots tall is the bar between AB and CD?", "0123456789abcdef"), 16)
+    bar_top = int(ask("How many unlit rows are above the bar?", "0123456789abcdef"), 16)
+    text_top = int(ask("How many unlit rows are above the letter A?", "0123456789abcdef"), 16)
+    result = f"bar {tall} tall, {bar_top} rows above the bar, {text_top} above the A"
+    request.node.user_properties.append(("bar", result))
+    print(f"{case}: {result}")
+    return tall, bar_top, text_top
+
+
+@pytest.mark.witness
+@needs_witness
+@pytest.mark.parametrize(
+    ("position", "question"),
+    [
+        (Position.FILL, "Are ABCD seven dots tall, like ordinary text?"),
+        (Position.MIDDLE, "Are ABCD as tall as the display?"),
+    ],
+)
+def test_full_height_text_is_full_height_only_in_middle(
+    sign: Sign, ask: Callable[[str, str], str], position: Position, question: str
+) -> None:
+    # Checklist: p. 96 says a two-line Sign "will 'size down'" a font larger than
+    # 7-high in the Top, Bottom, or Fill position; p. 95 says Middle is one line 16
+    # dots high. The library warns about the first.
+    sign.strict = False
+    frame = Frame(Mode.HOLD, position, [Font.FULL_HEIGHT, "ABCD"])
+    if position is Position.MIDDLE:
+        sign.write_text("A", frame)
+    else:
+        with pytest.warns(UnsupportedCapabilityWarning, match="7-high"):
+            sign.write_text("A", frame)
+
+    assert ask(question, "yn") == "y"
 
 
 @pytest.mark.witness

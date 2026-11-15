@@ -12,7 +12,10 @@ export interface Readings {
   dotsPictureCounted: boolean;
   /** Read General Information reply length. Default "29" (p. 29 field list). */
   generalInfoLength: "28" | "29" | "29+NUL";
-  /** Tone repeat count R plays R or R + 1 times. Default "R+1" (library's assumption; p. 22 unclear). */
+  /**
+   * Tone repeat count R plays R or R + 1 times. Default "R+1", as a real 4120C did
+   * (docs/hardware-results.md); p. 22 is unclear.
+   */
   toneRepeats: "R" | "R+1";
   /**
    * NEWS FLASH and TRUMPET Special Graphics accepted as (Table 66 gives both forms).
@@ -41,13 +44,14 @@ export interface Readings {
    */
   oversizedWrite: "measured" | "truncate" | "ignore";
   /**
-   * SMALL DOTS PICTURE rows sent sooner than 100 ms after the Width. Default "drop"
-   * (p. 40 asks for the pause).
+   * SMALL DOTS PICTURE rows sent sooner than 100 ms after the Width. Default "accept",
+   * as a real 4120C kept them (docs/hardware-results.md); p. 40 asks for the pause.
    */
   missingDotsPause: "drop" | "accept";
   /**
    * A SMALL DOTS PICTURE whose size differs from its Memory Configuration entry.
-   * Default "drop" (p. 39: it "must match"); "accept" keeps it as sent.
+   * Default "accept", kept as sent, as a real 4120C did (docs/hardware-results.md);
+   * "drop" follows p. 39 (it "must match").
    */
   dotsPictureSize: "drop" | "accept";
 }
@@ -63,6 +67,6 @@ export const DEFAULT_READINGS: Readings = {
   missingStxPause: "drop",
   networkQueryFraming: "response-packet",
   oversizedWrite: "measured",
-  missingDotsPause: "drop",
-  dotsPictureSize: "drop",
+  missingDotsPause: "accept",
+  dotsPictureSize: "accept",
 };

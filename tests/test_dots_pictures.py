@@ -214,3 +214,19 @@ def test_sign_reads_a_dots_picture_with_command_code_j() -> None:
         sign.read_dots_picture("A")
 
     assert transport.written == SYNC + b"\x01a01\x02JA\x04"
+
+
+def test_sign_reads_the_answer_a_4120c_gave() -> None:
+    # Captured from a 4120C (firmware 10184403 rev O (1206)) on 2026-11-15, after
+    # writing Table 60's arrow to DOTS PICTURE File "P" (docs/hardware-results.md).
+    answer = (
+        b"\x00" * 26
+        + b"\x01000\x02IP0F09"
+        + b"000000000\r000000000\r000100000\r000110000\r000111000\r000111100\r"
+        + b"111111110\r111111112\r111111110\r000111100\r000111000\r000110000\r"
+        + b"000100000\r000000000\r000000000\r"
+        + b"\x031BBE\x04"
+    )
+    sign = Sign(FakeTransport(responses=[answer]), model=models.ALPHA_4120C, address=1)
+
+    assert sign.read_dots_picture("P") == DotsPicture.parse("\n".join(TABLE_60_ROWS))

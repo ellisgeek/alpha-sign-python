@@ -274,3 +274,35 @@ def test_the_overhead_per_file_is_model_data() -> None:
 
 def test_memory_is_not_checked_when_the_models_size_is_unknown() -> None:
     validate(models.GENERIC, [configure(TextFile("A", size=0xFFFF))], strict=True)
+
+
+# p. 96, 7.10.3.2.5: in the Top, Bottom, or Fill position a two-line Sign "will 'size
+# down'" a font larger than 7-high. A 4120C showed full height text in Fill as seven
+# high (docs/hardware-results.md).
+@pytest.mark.parametrize("position", [Position.TOP, Position.BOTTOM, Position.FILL])
+@pytest.mark.parametrize("font", [Font.FULL_HEIGHT, Font.FULL_HEIGHT_FANCY])
+def test_a_font_taller_than_7_rows_outside_middle_is_reported_on_a_two_line_sign(
+    position: Position, font: Font
+) -> None:
+    command = write(Frame(Mode.HOLD, position, [font, "BIG"]))
+
+    with pytest.raises(UnsupportedCapability, match=r"7-high.*MIDDLE"):
+        validate(models.ALPHA_4120C, [command], strict=True)
+
+
+def test_a_font_taller_than_7_rows_in_middle_passes_on_a_two_line_sign() -> None:
+    # p. 95, 7.10.3.2.4: Middle treats the Sign as one line 16 dots high.
+    command = write(Frame(Mode.HOLD, Position.MIDDLE, [Font.FULL_HEIGHT, "BIG"]))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        validate(models.ALPHA_4120C, [command], strict=True)
+
+
+def test_a_frame_without_a_mode_field_is_not_checked_for_its_position() -> None:
+    # No Mode Field means no Display Position is sent; the Sign picks one.
+    command = write(Frame(None, content=[Font.FULL_HEIGHT, "BIG"]))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        validate(models.ALPHA_4120C, [command], strict=True)
