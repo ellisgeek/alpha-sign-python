@@ -41,7 +41,7 @@ Segments and Frames. The markup is a second spelling of the existing content mod
   tokens.
 - **Reads stay typed.** `read_text` and `read_string` return the model; `to_markup`
   turns it into a string. Parse then render then parse gives the same model.
-- **ADR 0003** records the syntax and the derived-vocabulary rule.
+- **ADR 0004** records the syntax and the derived-vocabulary rule.
 
 ## Issues
 

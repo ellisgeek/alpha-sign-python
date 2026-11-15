@@ -302,6 +302,7 @@ export function buildDisplay(
     clock: clockAt(state.clock, nowMs),
     readings,
     paletteSize: model.palette.length,
+    displayRows: model.rows,
   };
   const steps = buildSteps(state, model, ctx);
   const cycleMs = steps.reduce((sum, s) => sum + s.durationMs, 0);

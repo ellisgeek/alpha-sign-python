@@ -35,6 +35,8 @@ export interface LayoutContext {
   readings: Readings;
   /** Number of palette entries; indexes past the end draw as 1 (red-only models). */
   paletteSize: number;
+  /** Display height in pixels; picks the 15- or 16-high full height font. */
+  displayRows: number;
 }
 
 // Color cycles for the multi-color codes. Approximations: the manual names
@@ -164,7 +166,7 @@ export function frameText(segments: Segment[], ctx: LayoutContext): FrameText {
           style.colorCode = seg.code;
           break;
         case "font":
-          style.face = fontForCode(seg.code);
+          style.face = fontForCode(seg.code, ctx.displayRows);
           break;
         case "wide":
           style.wide = seg.on;

@@ -10,6 +10,14 @@ a capture tool, and copied into the emulator as data.
 Page numbers are from the protocol manual (`docs/reference/M-Protocol.pdf`). The
 hardware facts so far are in `docs/hardware-results.md`.
 
+## Update, 2026-11-15: glyphs come from the manual
+
+Appendix O of the manual (pp. 141-216) draws every font's glyphs as dot grids. The
+emulator now uses them ([ADR 0003](../../docs/adr/0003-fonts-from-appendix-o.md)), so
+glyph shapes need no capture. Capture still measures spacing (space, half space, gaps,
+fixed width), character styles, positions, Modes, Special Modes and Graphics, and color
+effects. Read "Fonts" and the glyph rows of the plan below in that light.
+
 ## Decision: exact copies
 
 The emulator ships the real Sign's glyph bitmaps and animation frames. This reverses two

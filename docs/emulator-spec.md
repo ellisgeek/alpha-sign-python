@@ -305,9 +305,11 @@ Sign once [hardware-results.md](hardware-results.md) records one.
   by the emulated clock, and the Priority TEXT File overrides it. Each Frame is laid
   out at its Display Position and drawn in its Mode. Mode timings are approximations:
   the manual does not give them.
-- **Fonts.** The emulator ships its own bitmap fonts, drawn for this project, one per
-  font Control Code the 4000 Series has. They are not copies of Alpha's fonts, so
-  text widths are close to a real Sign's but not exact.
+- **Fonts.** The emulator draws the manual's fonts, extracted from Appendix O
+  (pp. 141-216) by `docs/reference/extract_fonts.py`
+  ([ADR 0003](adr/0003-fonts-from-appendix-o.md)): five high, seven high, seven high
+  fancy, ten high, and full height and full height fancy at 15 or 16 rows to match the
+  model. Glyph shapes are exact; space widths and character gaps are assumptions.
 - **Modes, in order.** First HOLD, ROTATE, FLASH, ROLL and WIPE in each direction, and
   the Display Positions. Then the remaining Alpha 1.0 Modes. Special Modes and Special
   Graphics are placeholders until a real Sign has been watched.
@@ -433,7 +435,7 @@ the emulator in place of a Sign.
 
 ## Out of Scope
 
-- Pixel-exact drawing. The fonts are original and the Mode timings are approximations.
+- Pixel-exact drawing. Character spacing and the Mode timings are approximations.
 - Fault injection (dropped, late, or corrupted bytes on the Line). `FakeTransport`
   covers those cases. It could come later as a Line setting.
 - Web Serial. The page does not open a real serial port. The serial path (baud rate,
