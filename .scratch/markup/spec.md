@@ -1,6 +1,6 @@
 # Spec: An inline markup language for content
 
-Status: ready-for-agent
+Status: resolved
 
 Let an application developer write a Message as one string, such as
 `"{color red}Hello {time}{frame rotate top}{picture A}"`, instead of a list of
@@ -21,8 +21,8 @@ Segments and Frames. The markup is a second spelling of the existing content mod
   - `{color red}`, `{font seven_high}`, `{speed 3}`, `{speed no_hold}`,
     `{spacing fixed_width}`, `{date mmm_dd_yyyy}`
   - switches: `{wide on}`, `{wide off}`, `{flash on}`, `{double_high on}`,
-    `{descenders on}`, `{attribute shadow on}`
-  - no argument: `{time}`, `{newline}`, `{newpage}`
+    `{descenders on}`, `{attribute shadow on}` (a bare `{wide}` is on)
+  - no argument: `{time}`, `{new_line}`, `{new_page}` (the Control member names)
   - File references: `{string T}`, `{picture A}`
   - bytes the library does not model: `{raw 1F...}` in hex
   - Frame breaks: `{frame MODE [POSITION]}`, e.g. `{frame rotate top}`,

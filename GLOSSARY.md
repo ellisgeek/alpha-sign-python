@@ -114,6 +114,10 @@ _Avoid_: line, row, alignment
 A byte or short byte sequence inside text that changes how the following text looks or inserts live content, such as a color, font, speed, the time, or a STRING File reference.
 _Avoid_: escape code, tag, markup
 
+**Markup**:
+A string spelling of a Message or of Segments, with Control Codes and Frames written as tokens in braces, such as `{color red}` or `{frame rotate top}`.
+_Avoid_: template, tags, format string
+
 ## Scheduling
 
 **Run Time**:

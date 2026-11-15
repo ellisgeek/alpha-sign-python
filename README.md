@@ -35,6 +35,34 @@ with Sign.serial("/dev/tty.usbserial-1410", model=models.ALPHA_4120C) as sign:
     sign.clear_priority()
 ```
 
+## Markup
+
+A string given to `show`, `write_text`, `write_string`, or `priority` is markup:
+text, with Control Codes and Frames in braces.
+
+```python
+sign.write_text("A", "{frame rotate top}{color red}Temp: {string T}"
+                     "{frame hold bottom}{color green}{time}")
+sign.write_string("T", escape_markup(reading))  # outside values: keep braces literal
+print(to_markup(sign.read_text("A")))
+```
+
+A token is a kind and its values: `{color red}`, `{font seven_high}`,
+`{speed 3}`, `{wide on}`, `{date mmm_dd_yyyy}`, `{time}`, `{new_line}`,
+`{string T}`, `{picture A}`, and `{raw 1F...}` for bytes the library does not
+model. Values are the enum member names in lowercase. `{frame MODE POSITION}`
+starts a Frame (`{frame special snow}`, `{frame graphic fireworks}`); `{{` and
+`}}` are literal braces. A string inside a list of Segments is never parsed.
+
+## Pictures
+
+```python
+arrow = DotsPicture.parse("0010\n0111\n1111\n0111\n0010")  # p. 40 pixel codes
+sign.configure_memory([TextFile("A", size=64), DotsPictureFile("P", rows=5, columns=4)])
+sign.write_dots_picture("P", arrow)  # the size must match its File
+sign.show("Go {picture P}")
+```
+
 `Sign.serial` accepts any [pyserial URL](https://pyserial.readthedocs.io/en/latest/url_handlers.html),
 including `socket://host:port` for a serial-to-TCP bridge. The default line
 settings are 9600 baud, 8N1; pass `serial_format=SerialFormat.SEVEN_E_TWO` for

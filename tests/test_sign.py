@@ -14,6 +14,7 @@ from alpha_led_sign import (
     Weekday,
     models,
 )
+from alpha_led_sign.markup import MarkupError
 from alpha_led_sign.models import UnsupportedCapability, UnsupportedCapabilityWarning
 from alpha_led_sign.protocol.codes import Color, Font, Mode, Position, StringRef
 from alpha_led_sign.protocol.commands import ReadDayOfWeek, TimeFormat, Tone
@@ -404,3 +405,60 @@ def test_a_read_to_a_recipient_that_reaches_several_signs_is_sent_when_asked() -
     # Table 45, sent to Sign Address 00.
     assert transport.written == SYNC + b"\x01Z00\x02BC\x04"
     assert message == Message(Frame(None, content="FILE C"))  # Table 46
+
+
+# Markup: Sign methods read a str as markup (.scratch/markup/spec.md).
+
+
+def test_show_reads_markup() -> None:
+    transport = FakeTransport()
+    sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
+
+    sign.show("{color red}Hi {{x}}")
+
+    # Mode Field ESC "0" "b" (Tables 12, 47); 1CH "1" red (Appendix G, p. 82).
+    assert transport.written == SYNC + b"\x01a00\x02AA\x1b0b\x1c1Hi {x}\x04"
+
+
+def test_show_uses_its_mode_until_the_first_frame_token() -> None:
+    transport = FakeTransport()
+    sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
+
+    sign.show("A{frame hold bottom}B", mode=Mode.ROTATE, position=Position.TOP)
+
+    # Table 12: '"' top, "&" bottom; Table 65: "a" ROTATE, "b" HOLD.
+    assert transport.written == SYNC + b'\x01a00\x02AA\x1b"aA\x1b&bB\x04'
+
+
+def test_a_str_inside_a_segment_list_stays_literal() -> None:
+    transport = FakeTransport()
+    sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
+
+    sign.show(["{color red}"])
+
+    assert transport.written == SYNC + b"\x01a00\x02AA\x1b0b{color red}\x04"
+
+
+def test_write_text_and_priority_read_markup() -> None:
+    transport = FakeTransport()
+    sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
+
+    sign.write_text("B", "{frame}{time}")
+    sign.priority("{frame flash}!")
+
+    # 13H Call Time (p. 81); Priority TEXT File "0" (p. 20), FLASH "c" (Table 65).
+    assert transport.written == (
+        SYNC + b"\x01a00\x02AB\x13\x04" + SYNC + b"\x01a00\x02A0\x1b0c!\x04"
+    )
+
+
+def test_write_string_reads_markup_but_refuses_frames() -> None:
+    transport = FakeTransport()
+    sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
+
+    sign.write_string("T", "{color amber}72")
+    with pytest.raises(MarkupError):
+        sign.write_string("T", "{frame hold}72")
+
+    # Table 57 layout (p. 74); 1CH "3" amber (p. 82). Nothing sent for the refusal.
+    assert transport.written == SYNC + b"\x01a00\x02GT\x1c372\x04"

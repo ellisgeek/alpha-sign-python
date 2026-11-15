@@ -6,6 +6,7 @@ from types import TracebackType
 from typing import Self
 
 from alpha_led_sign import models
+from alpha_led_sign.markup import parse_markup, parse_segments
 from alpha_led_sign.models import SignModel, validate
 from alpha_led_sign.protocol.codes import Mode, Position
 from alpha_led_sign.protocol.commands import (
@@ -136,18 +137,35 @@ class Sign:
         position: Position = Position.FILL,
         label: str = DEFAULT_LABEL,
     ) -> None:
-        """Show ``content`` in one Frame of TEXT File ``label``. The display blanks first."""
-        self.send(WriteText(label, Message(Frame(mode, position, content))))
+        """Show ``content`` in TEXT File ``label``. The display blanks first.
+
+        A string is markup, such as ``"{color red}Hi"`` (``alpha_led_sign.markup``): plain
+        text works, and ``{{`` and ``}}`` are literal braces. ``mode`` and ``position``
+        apply until the first ``{frame ...}`` token. A string inside a list of
+        Segments is literal.
+        """
+        if isinstance(content, str):
+            message = parse_markup(content, mode=mode, position=position)
+        else:
+            message = Message(Frame(mode, position, content))
+        self.send(WriteText(label, message))
 
     def write_text(self, label: str, content: Message | Frame | str) -> None:
         """Replace TEXT File ``label``. The display blanks while it is written.
 
-        Plain text is shown in one HOLD Frame that fills the display.
+        A string is markup (see ``show``). Before any ``{frame ...}`` token it is shown
+        in one HOLD Frame that fills the display.
         """
         self.send(WriteText(label, _as_message(content)))
 
     def write_string(self, label: str, content: str | Sequence[Segment]) -> None:
-        """Replace STRING File ``label``. The display does not blank: use it for live values."""
+        """Replace STRING File ``label``. The display does not blank: use it for live values.
+
+        A string is markup (see ``show``) without ``{frame ...}`` tokens. Pass outside
+        values through ``escape_markup`` so their braces stay literal.
+        """
+        if isinstance(content, str):
+            content = parse_segments(content)
         self.send(WriteString(label, content))
 
     def priority(self, content: Message | Frame | str) -> None:
@@ -329,4 +347,4 @@ def _as_message(content: Message | Frame | str) -> Message:
         return content
     if isinstance(content, Frame):
         return Message(content)
-    return Message(Frame(Mode.HOLD, Position.FILL, content))
+    return parse_markup(content)

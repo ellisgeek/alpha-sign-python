@@ -1,5 +1,5 @@
 # ADR 0003, glossary, docs/spec.md, README
 
-Status: ready-for-agent
+Status: resolved
 
 Blocked by: 04

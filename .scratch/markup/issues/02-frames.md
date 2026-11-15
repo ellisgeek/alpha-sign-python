@@ -1,5 +1,5 @@
 # parse_markup with {frame ...}
 
-Status: ready-for-agent
+Status: resolved
 
 Blocked by: 01

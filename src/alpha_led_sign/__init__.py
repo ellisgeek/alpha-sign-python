@@ -6,6 +6,13 @@ format lives in ``alpha_led_sign.protocol``; Sign Model profiles live in ``model
 
 from alpha_led_sign import models
 from alpha_led_sign.discovery import DiscoveredSign, discover
+from alpha_led_sign.markup import (
+    MarkupError,
+    escape_markup,
+    parse_markup,
+    parse_segments,
+    to_markup,
+)
 from alpha_led_sign.models import SignModel, UnsupportedCapability, UnsupportedCapabilityWarning
 from alpha_led_sign.protocol.codes import (
     Attribute,
@@ -58,6 +65,7 @@ __all__ = [
     "DoubleHigh",
     "Font",
     "Frame",
+    "MarkupError",
     "Message",
     "Mode",
     "PictureColors",
@@ -88,5 +96,9 @@ __all__ = [
     "Weekday",
     "Wide",
     "discover",
+    "escape_markup",
     "models",
+    "parse_markup",
+    "parse_segments",
+    "to_markup",
 ]

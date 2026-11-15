@@ -1,5 +1,5 @@
 # Sign methods parse str as markup (breaking)
 
-Status: ready-for-agent
+Status: resolved
 
 Blocked by: 02

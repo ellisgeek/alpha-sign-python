@@ -275,6 +275,18 @@ from a real Sign.
     Sign's display, uses color on a red-only Sign, or goes to a Sign without graphics,
     so that I find out before the Sign shows something wrong.
 
+### Markup
+
+84. As an application developer, I want to write a whole Message as one string, such
+    as `"{frame rotate top}{color red}Temp: {string T}"`, so that content can live in a
+    configuration file.
+85. As an application developer, I want bad markup to raise an error that says where
+    it went wrong, so that I can fix a long string quickly.
+86. As an application developer, I want to escape outside values, so that a value
+    with braces in it can't add Control Codes.
+87. As an application developer, I want to turn what I read back into markup, so that
+    reads are easy to look at and to store.
+
 ## Implementation Decisions
 
 ### Facts from the manual that shape the design
@@ -308,8 +320,9 @@ from a real Sign.
   silence on the line. Pause is part of the Transport seam so that a bridge adapter
   can keep the silences its own way.
 - **Content is a list of Segments.** A string is literal text. An enum member or a
-  small value object is a Control Code. An inline markup parser may come later and
-  must produce the same model.
+  small value object is a Control Code. **Markup** is a second spelling of the same
+  model ([ADR 0004](adr/0004-markup-syntax.md)): `Sign` methods read a `str` argument
+  as markup, and the protocol types never do.
 
 ### Extensibility rules
 
@@ -396,6 +409,23 @@ to one Sign Model.
   the only production Transport. Alpha's own Ethernet adapters and serial servers are
   not supported.
 
+### Markup
+
+- `alpha_led_sign.markup` is pure and imports only the protocol layer: `parse_markup`
+  (a Message; content before the first `{frame}` takes the caller's Mode and Display
+  Position), `parse_segments` (refuses `{frame}`), `to_markup`, `escape_markup`, and
+  `MarkupError`.
+- Tokens are a kind and values: `{color red}`, `{speed 3}`, `{wide on}`,
+  `{attribute fancy on}`, `{date mmm_dd_yyyy}`, `{time}`, `{new_line}`,
+  `{string T}`, `{picture A}`, `{raw 1F...}`, and `{frame MODE [POSITION]}` with MODE
+  a Mode, `special` and a Special Mode, or `graphic` and a Special Graphic. A bare
+  `{frame}` has no Mode Field.
+- Enum values are member names in lowercase, less the kind as a prefix. Kinds and
+  values ignore case; File Labels don't. `{{` and `}}` are literal braces. Literal
+  text must be printable ASCII; a newline is `{new_line}`.
+- `to_markup` starts every Frame with its token, so reading it back needs no
+  defaults. A File Label of `}` or space is written as `{raw ...}`.
+
 ### DOTS PICTURE Files
 
 - `DotsPicture` is a frozen grid of `PixelColor` rows. `DotsPicture.parse` reads one
@@ -434,6 +464,7 @@ to one Sign Model.
 | `UnsupportedCapabilityWarning` | The same problems, in advisory mode. |
 | `ResponseError` (a `ValueError`) | A Response is malformed, fails its Checksum, or is not what the read expected. |
 | `UnexpectedResponseError` (a `ResponseError`) | A well-formed Response answers a different read. |
+| `MarkupError` (a `ValueError`) | Markup can't be read: an unknown token, a bad value, an unclosed `{` or stray `}`, or `{frame}` where only Segments go. `.position` is the offset of the problem. |
 | `SignTimeoutError` (a `TimeoutError`) | A read got no complete Response within the read timeout. |
 
 The rule: a protocol rule (true for every Sign) raises `ValueError`. Model data (true
@@ -576,7 +607,6 @@ manual brings in a model field or, for a Capability, the overrides field
   only. Loading pictures from image files.
 - Counters, Alpha 2.0 and 3.0 Commands and Control Codes, ASCII Printable formats, and
   extended characters past printable ASCII.
-- An inline markup language for content (for now).
 - Use of one `Sign` from more than one thread. `Sign` has no locking.
 - Retries and automatic reconnects. A failed write or read raises to the caller.
 - Logging. Callers can log `bytes(packet)`.

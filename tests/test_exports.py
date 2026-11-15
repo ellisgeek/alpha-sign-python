@@ -18,6 +18,7 @@ PUBLIC = {
         "SpecialMode", "Speed", "StringFile", "StringRef", "TextFile", "TimeFormat",
         "Tone", "Transport", "TrueDescenders", "UnsupportedCapability",
         "UnsupportedCapabilityWarning", "Weekday", "Wide", "discover", "models",
+        "MarkupError", "escape_markup", "parse_markup", "parse_segments", "to_markup",
     },
     "alpha_led_sign.protocol": {
         "Attribute", "Beep", "Capability", "CharacterAttribute", "CharacterFlash", "Chunk",

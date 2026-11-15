@@ -1,5 +1,5 @@
 # to_markup and the round trip
 
-Status: ready-for-agent
+Status: resolved
 
 Blocked by: 02
