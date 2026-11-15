@@ -10,7 +10,7 @@ buffer shows up as a failure rather than as a fast number.
 - TEXT File writes are timed for comparison: the display blanks on every one.
 - Reads are timed as a round trip.
 
-Against the emulator (start it first with ``uv run just emu-serve``):
+Against the emulator (start it first with ``just emu-serve``):
 
     uv run python examples/update_rate.py
 

@@ -1,11 +1,11 @@
 """Smoke tests against a real Sign. Opt-in: they never run against a real Sign in CI.
 
-    ALPHA_SIGN_PORT=/dev/tty.usbserial-1410 uv run pytest -m hardware
+    just test-hardware /dev/tty.usbserial-1410
 
 The same tests run against the emulator (Node and ``npm ci`` in emulator/), which
 needs no settings. Erase and re-address tests run there without their opt-in flags:
 
-    uv run pytest -m emulator
+    just test-emulator
 
 Optional settings:
 
@@ -21,9 +21,9 @@ Optional settings:
 - ALPHA_SIGN_CAPTURE=<path>: write every byte written and read, with the model,
   firmware, and date, to a JSON file. These captures are test vectors.
 - ALPHA_SIGN_WITNESS=1: also run the witnessed tests, which ask you what the Sign
-  showed or played. They read your answers, so run them with ``-s``:
+  showed or played. They read your answers, so they run with ``-s``:
 
-      ALPHA_SIGN_PORT=... ALPHA_SIGN_WITNESS=1 uv run pytest -m witness -s
+      just test-witness /dev/tty.usbserial-1410
 
 Some tests only record what the Sign did and print it; pytest hides that unless you
 add ``-rP`` (or ``-s``).

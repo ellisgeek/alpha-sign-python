@@ -9,7 +9,7 @@ the highest address you ask about: over two minutes for all 255 (the default), a
 22 s for ``--max-address 40``. A Sign ignores other commands until it has answered,
 so stopping early leaves it deaf for the rest of its wait.
 
-Against the emulator (start it first with ``uv run just emu-serve``):
+Against the emulator (start it first with ``just emu-serve``):
 
     uv run python examples/discover_signs.py
 

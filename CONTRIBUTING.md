@@ -6,41 +6,37 @@ decisions; `GLOSSARY.md` defines the terms used in code and docs.
 
 ## Setup and checks
 
-Install [uv](https://docs.astral.sh/uv/). It installs the Python pinned in
-`.python-version` and the dev dependencies:
+Install [uv](https://docs.astral.sh/uv/) and [just](https://just.systems/)
+(`uv tool install rust-just`, `brew install just`, or any of
+[its other installers](https://just.systems/man/en/packages.html)). uv installs
+the Python pinned in `.python-version` and the dev dependencies. Then:
 
 ```sh
-uv sync
-uv run prek install  # git hooks: checks on commit, commit message format, tests on push
+just setup   # dev dependencies, git hooks, the emulator's npm packages
+just check   # ruff (lint + format), ty, actionlint, file checks
+just test    # offline tests; also run by the pre-push hook
 ```
 
-Then:
-
-```sh
-uv run prek run -a   # ruff (lint + format), ty, actionlint, file checks
-uv run pytest        # offline tests; also run by the pre-push hook
-```
-
-The tests need no sign and no serial port. Tests that talk to a real sign are
-marked `hardware` and skipped by default; run them with
-`ALPHA_SIGN_PORT=/dev/tty.usbserial-XXXX uv run pytest -m hardware`.
+`just` with no recipe lists them all. The tests need no sign and no serial
+port. Tests that talk to a real sign are marked `hardware` and skipped by
+default; run them with `just test-hardware /dev/tty.usbserial-XXXX`.
 
 ### The emulator
 
 `emulator/` is a TypeScript program that acts like a Sign on the line
-(`docs/emulator-spec.md`). It needs the Node version in `emulator/.nvmrc`:
+(`docs/emulator-spec.md`). It needs the Node version in `emulator/.nvmrc`;
+`just setup` installs its npm packages (`just emu-install` on its own).
 
 ```sh
-cd emulator && npm ci              # once
-npm test && npm run check          # its own tests, type check, and lint
-npm run headless -- --port 0       # Signs on a TCP port; prints "tcp=<port> http=<port>"
-npm run serve                      # the same, with the display in a browser
+just emu-test && just emu-check    # its own tests, type check, and lint
+just emu-headless --port 0         # Signs on a TCP port; prints "tcp=<port> http=<port>"
+just emu-serve                     # the same, with the display in a browser
 ```
 
 The library reaches it as a serial port with a `socket://` URL, for example
 `SerialTransport("socket://127.0.0.1:4120")`.
 
-`uv run pytest -m emulator` runs the hardware tests against it with no Sign:
+`just test-emulator` runs the hardware tests against it with no Sign:
 a fixture starts the headless host on a free port, sets up one 4120C at Sign
 Address 1, and sets `ALPHA_SIGN_PORT` to it. The tests that erase memory run
 without `ALPHA_SIGN_ALLOW_ERASE`. Discovery and the witnessed tests are
@@ -50,30 +46,33 @@ from the emulator is never a test vector. A pass here shows the library and
 the emulator read the manual the same way; only a real Sign settles a
 `# PROVISIONAL` value.
 
-### Short names with `just`
+### Recipes
 
-The `justfile` at the repo root gives the common commands short names.
-`just` comes with the dev dependencies, so run it as `uv run just <recipe>`
-(a `just` installed globally reads the same file). `uv run just` lists the
-recipes. Each recipe only wraps a raw command; the prek hooks and CI call the
-raw commands.
+The `justfile` at the repo root holds every development command; the docs,
+the prek hooks' setup, and CI call its recipes. Recipes that take `[args]`
+pass them on (to pytest, the emulator host, or `scripts/sign.py`).
 
-| Recipe | Runs |
+| Recipe | Does |
 |---|---|
-| `just setup` | `uv sync`, `uv run prek install`, `npm ci` in `emulator/` |
-| `just check` | `uv run prek run -a` |
-| `just test [args]` | `uv run pytest [args]` |
-| `just test-hardware PORT` | `ALPHA_SIGN_PORT=PORT uv run pytest -m hardware` |
-| `just test-emulator [args]` | `uv run pytest -m emulator [args]` |
-| `just release` | `scripts/release.sh` (never pushes) |
-| `just emu-test` | `npm test` in `emulator/` |
-| `just emu-test-page` | `npm run test:page` in `emulator/` (the page's Playwright test; run `npx playwright install chromium` once) |
-| `just emu-check` | `npm run check` in `emulator/` (typecheck and lint) |
-| `just emu-build` | `npm run build` in `emulator/` |
-| `just emu-headless [args]` | `npm run headless -- [args]` in `emulator/` (e.g. `--port 0`) |
-| `just emu-serve [args]` | `npm run serve -- [args]` in `emulator/` (bridge, page, browser) |
-| `just vegas-mode [args]` | `uv run python examples/vegas_mode.py [args]`: a console-style Vegas mode, every color, Mode, and font the Sign has on a loop (erases every File) |
-| `just update-rate [args]` | `uv run python examples/update_rate.py [args]`: updates per second for STRING and TEXT File writes and reads, against the serial line's limit (erases every File) |
+| `just setup` | Installs the dev dependencies, the git hooks, and the emulator's npm packages |
+| `just check` | Runs prek on every file: ruff, ty, actionlint, file checks |
+| `just test [args]` | Runs the offline tests |
+| `just test-hardware PORT [args]` | Runs the hardware tests against the Sign on `PORT` |
+| `just test-witness PORT [args]` | Runs the witnessed tests, which ask you what the Sign on `PORT` showed or played |
+| `just test-emulator [args]` | Runs the hardware tests against the emulator |
+| `just docs` | Builds the documentation site into `great-docs/_site/` |
+| `just docs-preview` | Serves the documentation site in a browser |
+| `just build` | Builds the sdist and wheel into `dist/` |
+| `just release` | Bumps the version, writes the changelog, commits, and tags (never pushes) |
+| `just emu-install` | Installs the emulator's npm packages |
+| `just emu-install-browser [args]` | Installs Chromium for the page test (CI adds `--with-deps`) |
+| `just emu-test` | Runs the emulator's tests |
+| `just emu-test-page` | Runs the emulator page's Playwright test (`just emu-install-browser` once first) |
+| `just emu-check` | Type checks and lints the emulator |
+| `just emu-build` | Builds the emulator's page into `emulator/dist` |
+| `just emu-headless [args]` | Runs the headless emulator host (e.g. `--port 0`) |
+| `just emu-serve [args]` | Runs the bridge and the emulator page, and opens the browser |
+| `just sign ARGS` | Runs the command-line tool in `scripts/sign.py` (e.g. `just sign info`) |
 | `just check-all` | `check` and `emu-check` |
 | `just test-all` | `test`, `emu-test`, and `test-emulator` |
 
@@ -96,7 +95,7 @@ from two sources:
   and every public module, class, function, and method has one, with `Args`,
   `Returns`, `Yields`, and `Raises` sections that match the code. Ruff checks this
   (the `D`, `DOC`, and `ANN` rules in `pyproject.toml`). An `>>>` example in a
-  docstring is a doctest that `uv run pytest` runs; an example that needs a Sign
+  docstring is a doctest that `just test` runs; an example that needs a Sign
   goes in a fenced code block instead.
 - The user guide is the `.qmd` pages in `docs/user_guide/`, in the order of their
   number prefixes.
@@ -105,12 +104,12 @@ from two sources:
 name goes there too. To build and view the site:
 
 ```sh
-uv run --group docs great-docs build     # writes great-docs/_site/
-uv run --group docs great-docs preview
+just docs           # writes great-docs/_site/
+just docs-preview
 ```
 
 The `docs` dependency group includes Quarto, so nothing needs a system install.
-The first `uv run --group docs` installs it.
+The first `just docs` installs it.
 
 ## Git workflow
 
@@ -155,7 +154,7 @@ Releases use [Semantic Versioning](https://semver.org/), `MAJOR.MINOR.PATCH`
 bumps the minor number and anything else the patch. See
 [ADR 0001](https://github.com/ellisgeek/alpha-sign-python/blob/main/docs/adr/0001-semantic-versioning.md).
 
-To cut a release, run `scripts/release.sh` on a clean `main`:
+To cut a release, run `just release` on a clean `main`:
 
 1. [git-cliff](https://git-cliff.org/) picks the next version from the
    Conventional Commits since the last tag (`--bumped-version`), and
@@ -169,13 +168,13 @@ To cut a release, run `scripts/release.sh` on a clean `main`:
    Commits that start with "deprecate" or "remove" go under Deprecated or
    Removed. `docs`, `test`, `build`, `ci`, and `refactor` commits are left out
    unless they are breaking.
-3. The script commits `build(release): <version>` and tags it. It never
+3. The recipe commits `build(release): <version>` and tags it. It never
    pushes.
 
 Review the commit and changelog, then push both:
 
 ```sh
-git push origin HEAD 0.1.0   # the version the script printed
+git push origin HEAD 0.1.0   # the version the recipe printed
 ```
 
 Pushing the tag starts the **Release** workflow. It checks that the tag is

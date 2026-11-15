@@ -1,7 +1,7 @@
 name: Release
 
 # Publishes a GitHub release when a SemVer tag is pushed. Cut the release
-# locally first with scripts/release.sh (bump, changelog, commit, tag), then
+# locally first with `just release` (bump, changelog, commit, tag), then
 # push the commit and the tag.
 on:
   push:
@@ -23,6 +23,8 @@ jobs:
         with:
           enable-cache: true
 
+      - uses: extractions/setup-just@v4
+
       - name: Check tag matches the package version
         run: |
           tag="$GITHUB_REF_NAME"
@@ -32,22 +34,26 @@ jobs:
           fi
           version="$(uv version --short)"
           if [[ "$version" != "$tag" ]]; then
-            echo "::error::Tag '$tag' does not match pyproject.toml version '$version'; cut releases with scripts/release.sh"
+            echo "::error::Tag '$tag' does not match pyproject.toml version '$version'; cut releases with just release"
             exit 1
           fi
 
-      - run: uv sync --locked --group dev
+      # The emulator's hooks need its npm packages; CI checks the emulator.
+      - uses: j178/prek-action@v3.1.0
+        env:
+          SKIP: emulator-biome,emulator-tsc
 
-      - name: Check
-        run: |
-          uv run prek run --all-files --show-diff-on-failure
-          uv run pytest -q
+      - run: just test -q
 
       - name: Release notes
-        run: uv run git-cliff --current --strip all --output "$RUNNER_TEMP/notes.md"
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: pyproject.toml
+          args: --current --strip all
+        env:
+          OUTPUT: ${{ runner.temp }}/notes.md
 
-      - name: Build
-        run: uv build
+      - run: just build
 
       - name: Publish release
         env:

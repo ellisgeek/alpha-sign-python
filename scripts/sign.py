@@ -1,26 +1,26 @@
 """Set up a Sign and read its state from the command line.
 
-    uv run scripts/sign.py info
-    uv run scripts/sign.py discover --max-address 15
-    uv run scripts/sign.py configure A:text:512 T:string:16 P:picture:5x4 --yes
-    uv run scripts/sign.py clock --format 24
-    uv run scripts/sign.py speaker on
-    uv run scripts/sign.py beep
-    uv run scripts/sign.py tone 100 5 --repeats 2
-    uv run scripts/sign.py address 3
-    uv run scripts/sign.py sequence AB --order in-order
-    uv run scripts/sign.py run-time A 08:00-17:00
-    uv run scripts/sign.py run-days A weekdays
-    uv run scripts/sign.py show "{color red}Hello"
-    uv run scripts/sign.py string T "72F"
-    uv run scripts/sign.py picture P arrow.txt
-    uv run scripts/sign.py priority "{frame flash}EMERGENCY"
-    uv run scripts/sign.py priority --clear
-    uv run scripts/sign.py read A
-    uv run scripts/sign.py read T --string
-    uv run scripts/sign.py read P --picture
-    uv run scripts/sign.py reset
-    uv run scripts/sign.py clear-memory
+    just sign info
+    just sign discover --max-address 15
+    just sign configure A:text:512 T:string:16 P:picture:5x4 --yes
+    just sign clock --format 24
+    just sign speaker on
+    just sign beep
+    just sign tone 100 5 --repeats 2
+    just sign address 3
+    just sign sequence AB --order in-order
+    just sign run-time A 08:00-17:00
+    just sign run-days A weekdays
+    just sign show "{color red}Hello"
+    just sign string T "72F"
+    just sign picture P arrow.txt
+    just sign priority "{frame flash}EMERGENCY"
+    just sign priority --clear
+    just sign read A
+    just sign read T --string
+    just sign read P --picture
+    just sign reset
+    just sign clear-memory
 
 The port and the other connection settings come from the same ALPHA_SIGN_*
 variables as the hardware tests, or from the options. At Sign Address 0 (the

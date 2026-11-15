@@ -1,5 +1,5 @@
-# great-docs site for alpha-led-sign: `uv run --group docs great-docs build`, then
-# `uv run --group docs great-docs preview`. The build directory, great-docs/, is
+# great-docs site for alpha-led-sign: `just docs`, then
+# `just docs-preview`. The build directory, great-docs/, is
 # not committed. Options: https://posit-dev.github.io/great-docs/user-guide/configuration.html
 
 module: alpha_led_sign

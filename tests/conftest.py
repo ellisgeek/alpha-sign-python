@@ -1,4 +1,4 @@
-"""The emulator run: ``uv run pytest -m emulator`` runs the hardware tests against the
+"""The emulator run: ``just test-emulator`` runs the hardware tests against the
 emulator's headless host instead of a real Sign."""
 
 import os

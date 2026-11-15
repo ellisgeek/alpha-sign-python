@@ -15,9 +15,12 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync --locked --group dev
-      - run: uv run prek run --all-files --show-diff-on-failure
-      - run: uv run pytest
+      - uses: extractions/setup-just@v4
+      # The emulator's hooks need its npm packages; the emulator job checks it.
+      - uses: j178/prek-action@v3.1.0
+        env:
+          SKIP: emulator-biome,emulator-tsc
+      - run: just test
 
   emulator:
     runs-on: ubuntu-latest
@@ -30,20 +33,14 @@ jobs:
           node-version-file: emulator/.nvmrc
           cache: npm
           cache-dependency-path: emulator/package-lock.json
-      - run: npm ci
-        working-directory: emulator
-      - run: npm run check
-        working-directory: emulator
-      - run: npm test
-        working-directory: emulator
-      - run: npm run build
-        working-directory: emulator
-      - run: npx playwright install --with-deps chromium
-        working-directory: emulator
-      - run: npm run test:page
-        working-directory: emulator
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync --locked --group dev
-      - run: uv run pytest -m emulator -rs
+      - uses: extractions/setup-just@v4
+      - run: just emu-install
+      - run: just emu-check
+      - run: just emu-test
+      - run: just emu-build
+      - run: just emu-install-browser --with-deps
+      - run: just emu-test-page
+      - run: just test-emulator -rs

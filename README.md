@@ -128,7 +128,7 @@ checklist in [docs/spec.md](https://github.com/ellisgeek/alpha-sign-python/blob/
 run the hardware tests:
 
 ```sh
-ALPHA_SIGN_PORT=/dev/tty.usbserial-1410 uv run pytest -m hardware
+just test-hardware /dev/tty.usbserial-1410
 ```
 
 The design, test seams, and open work are in [docs/spec.md](https://github.com/ellisgeek/alpha-sign-python/blob/main/docs/spec.md);

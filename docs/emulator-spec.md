@@ -487,7 +487,7 @@ the emulator in place of a Sign.
 - The headless host, with a TCP port for the library and a JSON control channel, and
   the bridge.
 - The page, which draws each Sign's LED matrix and state and sets the clock.
-- The emulator run of the hardware tests: `uv run pytest -m emulator`.
+- The emulator run of the hardware tests: `just test-emulator`.
 
 How to run each part is in [CONTRIBUTING.md](../CONTRIBUTING.md).
 

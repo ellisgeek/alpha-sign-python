@@ -4,8 +4,8 @@ What a real Sign did for each item on the hardware checklist in [spec.md](spec.m
 Fill in a row after each hardware run. When a result disagrees with the manual, add
 the overrides field to `SignModel` and use it in that model's profile.
 
-Run the automatic tests with `ALPHA_SIGN_PORT=... uv run pytest -m hardware`, and the
-witnessed ones with `ALPHA_SIGN_PORT=... ALPHA_SIGN_WITNESS=1 uv run pytest -m witness -s`.
+Run the automatic tests with `just test-hardware PORT`, and the
+witnessed ones with `just test-witness PORT`.
 Set `ALPHA_SIGN_CAPTURE=<path>` to keep the bytes as test vectors.
 
 | Item | What the manual says | What the 4120C did | Firmware | Date |

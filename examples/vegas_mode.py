@@ -8,7 +8,7 @@ the Sign Model has, both lines, and a flashing Priority TEXT File with a tone sw
 and loops until you press Ctrl-C. Content the model lacks is left out, so it runs on
 any Sign Model.
 
-Against the emulator (start it first with ``uv run just emu-serve``):
+Against the emulator (start it first with ``just emu-serve``):
 
     uv run python examples/vegas_mode.py
 
