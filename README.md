@@ -131,3 +131,10 @@ ALPHA_SIGN_PORT=/dev/tty.usbserial-1410 uv run pytest -m hardware
 The design, test seams, and open work are in [docs/spec.md](docs/spec.md);
 the domain terms are in [GLOSSARY.md](GLOSSARY.md). See
 [CONTRIBUTING.md](CONTRIBUTING.md) to work on it.
+
+## License
+
+MIT; see [LICENSE](LICENSE). The emulator's font data
+(`emulator/src/core/display/manual-glyphs.ts`, and the test images drawn with it) is
+copied from Appendix O of Alpha's protocol manual and is not covered by that license.
+It is not part of the Python package.

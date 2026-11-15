@@ -35,8 +35,9 @@ release unless asked.
 
 ### Issue tracker
 
-Issues live as local markdown files under `.scratch/<feature>/` (no remote
-yet). See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues on `ellisgeek/alpha-sign-python`, through the `gh`
+CLI. Earlier efforts stay as markdown under `.scratch/`. See
+`docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

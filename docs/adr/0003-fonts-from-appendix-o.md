@@ -16,9 +16,10 @@ has but no capture session had reached: seven high fancy, ten high, and the 15- 
 ## Consequences
 
 - This reverses the emulator spec's "fonts drawn for this project, not copies of
-  Alpha's fonts". The glyphs are Alpha's designs. The emulator is not published
-  (ADR 0002), and the Python package does not contain them. Settle the licence
-  question before either changes.
+  Alpha's fonts". The glyphs are Alpha's designs. The Python package does not contain
+  them. The repository is public under the MIT license, and the README says the glyph
+  data and the test images drawn with it are copied from the manual and not covered by
+  that license (decided 2026-11-15).
 - The manual gives each glyph's cell, not the spacing a Sign uses. The widths of a
   space and a half space (7EH), and the gap between characters, are still
   assumptions, and the display capture still measures them.

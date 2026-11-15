@@ -3,6 +3,20 @@ name = "alpha-led-sign"
 version = "0.1.0"
 description = "Typed Python control for Alpha-protocol LED message signs"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["alpha", "led sign", "message sign", "betabrite", "serial", "protocol"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications",
+    "Topic :: System :: Hardware",
+    "Typing :: Typed",
+]
 authors = [
     { name = "Syne Ardwin", email = "syne@syne.tel" }
 ]
@@ -10,6 +24,12 @@ requires-python = ">=3.12"
 dependencies = [
     "pyserial>=3.5",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ellisgeek/alpha-sign-python"
+Repository = "https://github.com/ellisgeek/alpha-sign-python"
+Issues = "https://github.com/ellisgeek/alpha-sign-python/issues"
+Changelog = "https://github.com/ellisgeek/alpha-sign-python/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["uv_build>=0.10.12,<0.11.0"]
