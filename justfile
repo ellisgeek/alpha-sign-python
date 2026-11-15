@@ -117,10 +117,6 @@ emu-headless *args:
 emu-serve *args:
     cd emulator && npm run serve -- "$@"
 
-# Run the sign command-line tool in scripts/sign.py (e.g. `just sign info`)
-sign *args:
-    uv run scripts/sign.py "$@"
-
 # Run the Python and emulator checks
 check-all: check emu-check
 

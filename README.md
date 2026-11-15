@@ -120,6 +120,22 @@ pass `broadcast_reads=True` when only one Sign is on the line.
 Discovery waits 1 s plus 0.5 s for each address searched, because each Sign
 answers in turn. Lower `max_address` when the addresses are known to be small.
 
+## Command line
+
+The `cli` extra installs an `alpha-led-sign` command for setting up a Sign and
+reading its state:
+
+```sh
+pip install "alpha-led-sign[cli] @ git+https://github.com/ellisgeek/alpha-sign-python"
+alpha-led-sign --port /dev/tty.usbserial-1410 info
+alpha-led-sign --port /dev/tty.usbserial-1410 configure A:text:512 T:string:16
+alpha-led-sign --port /dev/tty.usbserial-1410 show "{color red}Hello"
+```
+
+`alpha-led-sign --help` lists the commands. The port and line settings can also come
+from `ALPHA_SIGN_PORT`, `ALPHA_SIGN_MODEL`, `ALPHA_SIGN_ADDRESS`, `ALPHA_SIGN_BAUD`,
+and `ALPHA_SIGN_FORMAT`.
+
 ## Status
 
 The library has been run against a real 4120C. What it found, item by item against

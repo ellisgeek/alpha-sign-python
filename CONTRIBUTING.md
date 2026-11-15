@@ -21,6 +21,9 @@ just test    # offline tests; also run by the pre-push hook
 port. Tests that talk to a real sign are marked `hardware` and skipped by
 default; run them with `just test-hardware /dev/tty.usbserial-XXXX`.
 
+`just setup` also installs the `alpha-led-sign` command into `.venv/bin`, with
+the `cli` extra; activate the environment to run it from the checkout.
+
 ### The emulator
 
 `emulator/` is a TypeScript program that acts like a Sign on the line
@@ -50,7 +53,7 @@ the emulator read the manual the same way; only a real Sign settles a
 
 The `justfile` at the repo root holds every development command; the docs,
 the prek hooks' setup, and CI call its recipes. Recipes that take `[args]`
-pass them on (to pytest, the emulator host, or `scripts/sign.py`).
+pass them on (to pytest or the emulator host).
 
 | Recipe | Does |
 |---|---|
@@ -72,7 +75,6 @@ pass them on (to pytest, the emulator host, or `scripts/sign.py`).
 | `just emu-build` | Builds the emulator's page into `emulator/dist` |
 | `just emu-headless [args]` | Runs the headless emulator host (e.g. `--port 0`) |
 | `just emu-serve [args]` | Runs the bridge and the emulator page, and opens the browser |
-| `just sign ARGS` | Runs the command-line tool in `scripts/sign.py` (e.g. `just sign info`) |
 | `just check-all` | `check` and `emu-check` |
 | `just test-all` | `test`, `emu-test`, and `test-emulator` |
 

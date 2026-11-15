@@ -1,0 +1,92 @@
+---
+title: The command line
+---
+
+The `cli` extra installs an `alpha-led-sign` command for setting up a Sign and
+checking on it without writing Python:
+
+```sh
+uv tool install "alpha-led-sign[cli] @ git+https://github.com/ellisgeek/alpha-sign-python"
+# or, in a project:
+pip install "alpha-led-sign[cli] @ git+https://github.com/ellisgeek/alpha-sign-python"
+```
+
+`alpha-led-sign --help` lists every command, and `alpha-led-sign <command> --help` shows
+one command's options. A problem the library or the port reports, such as a bad
+File Label or a Sign that doesn't answer, ends the command with an `error:` line
+and exit status 1.
+
+## Connecting
+
+Give the port with `--port`, or set `ALPHA_SIGN_PORT` once:
+
+```sh
+export ALPHA_SIGN_PORT=/dev/tty.usbserial-1410
+alpha-led-sign info
+```
+
+The other connection settings work the same way:
+
+| Option | Variable | Default |
+|---|---|---|
+| `--port` | `ALPHA_SIGN_PORT` | none; required |
+| `--model` | `ALPHA_SIGN_MODEL` | `4120C` |
+| `--address` | `ALPHA_SIGN_ADDRESS` | `0` |
+| `--baud` | `ALPHA_SIGN_BAUD` | `9600` |
+| `--format` | `ALPHA_SIGN_FORMAT` | `8N1` (or `7E2`) |
+
+The port can be any pyserial URL, such as `socket://127.0.0.1:4120` for the
+emulator. At Sign Address 0, reads go to every Sign on the line, so connect
+only one Sign or pass the Sign's own `--address`.
+
+## Setting up a Sign
+
+```sh
+alpha-led-sign configure A:text:512 T:string:16 P:picture:5x4   # erases every File
+alpha-led-sign clock --format 24
+alpha-led-sign speaker on
+alpha-led-sign sequence AB --order in-order
+alpha-led-sign run-time A 08:00-17:00
+alpha-led-sign run-days A weekdays
+```
+
+`configure` and `clear-memory` erase every File, so they ask first; `--yes`
+skips the question. A Memory Configuration entry is `LABEL:text:SIZE`,
+`LABEL:string:SIZE`, or `LABEL:picture:ROWSxCOLS`, with `:mono`, `:tri`, or
+`:eight` after a picture for its colors and `:locked` to lock a TEXT or picture
+File against the IR keyboard.
+
+## Showing content
+
+```sh
+alpha-led-sign show "{color red}Hello"           # TEXT File A; --label for another
+alpha-led-sign string T "72F"
+alpha-led-sign picture P arrow.txt               # one row of pixel codes 0-8 per line
+alpha-led-sign priority "{frame flash}EMERGENCY"
+alpha-led-sign priority --clear
+```
+
+Content is [markup](03-markup.qmd).
+
+## Reading and discovery
+
+```sh
+alpha-led-sign info                      # firmware, clock, speaker, memory, serial errors
+alpha-led-sign read A                    # a TEXT File, as markup
+alpha-led-sign read T --string
+alpha-led-sign read P --picture
+alpha-led-sign discover --max-address 15
+```
+
+`discover` waits for every address up to `--max-address`; see
+[Reading back and discovery](07-reading-and-discovery.qmd).
+
+## Sound and maintenance
+
+```sh
+alpha-led-sign beep                      # or: beep continuous
+alpha-led-sign tone 100 5 --repeats 2
+alpha-led-sign address 3                 # then pass --address 3
+alpha-led-sign reset                     # restarts the Sign; memory is kept
+alpha-led-sign clear-memory
+```
