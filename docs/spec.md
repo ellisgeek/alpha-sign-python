@@ -8,8 +8,8 @@ Page and table numbers refer to the Alpha Sign Communications Protocol manual,
 manual). Stories and decisions marked **(waits for hardware)** are covered by
 [Remaining work](#remaining-work).
 
-Status (November 2026): the library covers Alpha 1.0 Packet framing, TEXT and STRING
-Files, Sign Models and the memory budget, special functions and scheduling, the serial
+Status (November 2026): the library covers Alpha 1.0 Packet framing, TEXT, STRING,
+and SMALL DOTS PICTURE Files, Sign Models and the memory budget, special functions and scheduling, the serial
 Transport, `Sign`, reads, and discovery. All of it passes offline. Every hardware
 checklist item has a test, but none has run against a real **Sign** yet.
 
@@ -261,6 +261,20 @@ from a real Sign.
     from several Signs don't collide. (Numbered last so that the numbers tests cite
     stay the same.)
 
+### DOTS PICTURE Files
+
+79. As an application developer, I want to build a picture from rows of the manual's
+    pixel digits and write it to a DOTS PICTURE File, so that I can show a logo.
+80. As an application developer, I want to call a DOTS PICTURE File from a Frame, so
+    that the picture shows with my text.
+81. As an application developer, I want to read a DOTS PICTURE File back as a picture,
+    so that I can check what a Sign holds.
+82. As an application developer, I want a picture over 31 rows or 255 columns, or with
+    rows of different widths, to be refused, so that I learn the limits (pp. 39-40).
+83. As an application developer, I want a warning when a picture is larger than my
+    Sign's display, uses color on a red-only Sign, or goes to a Sign without graphics,
+    so that I find out before the Sign shows something wrong.
+
 ## Implementation Decisions
 
 ### Facts from the manual that shape the design
@@ -273,6 +287,7 @@ from a real Sign.
 | A nested Packet needs at least 100 ms of silence after each STX. A tone Command needs 3 s of silence after it. | pp. 11, 27 | The encoder returns byte chunks with the pauses between them. Sleeping is the sender's job, so tests stay instant. |
 | Writing the Memory Configuration erases every File. | p. 21 | The API makes this explicit and hard to call by accident. |
 | A STRING File updates without blanking the display; max 125 bytes. A TEXT write blanks the display. | p. 37 | `write_string` is the route for live values. |
+| SMALL DOTS PICTURE: Write `I`, Read `J`. Height and Width, then at least 100 ms of silence, then one row of pixel digits per CR. At most 31 x 255. | pp. 39-41, Table 60 | The Command asks for a pause inside its data, and the encoder splits the Chunk there. |
 | Reads return a Response Packet (type `0`, address `00`) with a Checksum. | pp. 19, 38 | One Response decoder for all reads. |
 | The pauses after STX and after tones are part of the protocol. | pp. 11, 27 | A network bridge can merge writes and lose them. A bridge must keep them, or the library must avoid nesting through it. |
 | Appendix F has worked examples with Checksums (`AAHELLO` gives `01FB`). | pp. 58-68 | These are the test vectors. |
@@ -284,7 +299,9 @@ from a real Sign.
 - A Packet is a sequence of Chunks. Each Chunk has bytes and the silence (in seconds)
   the line must keep after it. A nested Packet needs 100 ms after each STX (pp. 11,
   13, 14). A fixed tone needs 3 s after the Packet (p. 27, note 4). A programmable
-  tone needs its full play time. Converting a Packet to bytes joins the Chunks and
+  tone needs its full play time. A SMALL DOTS PICTURE write needs 100 ms after its
+  Width (p. 40), so a Command can also name pauses inside its data, and the Chunk is
+  split there. Converting a Packet to bytes joins the Chunks and
   drops the pauses, for logging and comparison.
 - Sending a Packet means writing each Chunk and then asking the Transport to pause.
   A Transport's write returns only once the bytes have left, so a pause is real
@@ -361,7 +378,7 @@ to one Sign Model.
   `show`, `write_text`, `write_string`, `priority`, `clear_priority`,
   `configure_memory`, `clear_memory`, `soft_reset`, `set_time_format`,
   `run_sequence`, `set_clock`, `beep`, `read_text`, `read_string`, `info`,
-  `serial_errors`. Lower-level methods: `send` (validate, encode, and send Commands in
+  `serial_errors`, `write_dots_picture`, `read_dots_picture`. Lower-level methods: `send` (validate, encode, and send Commands in
   one Packet) and `query` (send one read and parse its answer). Scheduling, sound,
   and addressing: `set_run_times`, `set_run_days`, `set_speaker`, `tone`,
   `set_sign_address`, and order (default by Run Time) and lock (default unlocked)
@@ -378,6 +395,23 @@ to one Sign Model.
 - **Connection.** The 4120C is reached over USB-serial to RJ11. `SerialTransport` is
   the only production Transport. Alpha's own Ethernet adapters and serial servers are
   not supported.
+
+### DOTS PICTURE Files
+
+- `DotsPicture` is a frozen grid of `PixelColor` rows. `DotsPicture.parse` reads one
+  line per row in the manual's digits. More than 31 rows or 255 columns, rows of
+  different widths, or a character that is not a pixel code raise `ValueError`.
+- `DotsPictureRef(label)` is the `14H` Control Code that calls a picture from a
+  Frame. It needs `Capability.GRAPHIC`. A STRING File can't hold it (Table 19).
+- Every row is sent with a CR after it, the last one too, and no LF (Table 60).
+- A read is decoded the way p. 40 says the Sign reads a write: LF is ignored, the
+  last CR is optional, a short row is padded with off pixels, a long one is cut, and
+  rows never sent are off.
+- Validation is advisory: a picture larger than the model's display (Table 70,
+  note 1), a model without `GRAPHIC`, and a pixel other than off or red on a model
+  without `COLOR`. Colors 4-8 on a tricolor model are not checked.
+- The size must match the File's Memory Configuration entry (p. 39). `Sign` does not
+  track the configuration, so this is not checked.
 
 ### Read behavior
 
@@ -523,6 +557,11 @@ manual brings in a model field or, for a Capability, the overrides field
 | Two-digit year on Alpha 1.0: p. 28, note 15 gives the 1997-2096 window for Alpha 2.0 and later only. | The window applies to every Sign. | Witnessed: set 2026-11-07, show the date. |
 | Per-File overhead: the manual says 11 bytes, readerboard reports 13. Whether DOTS PICTURE Files count. | 11 bytes, DOTS PICTURE included. On the 4120C, DOTS PICTURE sizes count too, as its model says. | Automatic, needs erase permission: measure free memory with one File and with three, and with and without a DOTS PICTURE File. |
 | Total memory: General Information against the model's memory size. | 28,000 bytes on the 4000 Series (brochure). The 4120C reported 28,872, and its model now uses that figure. | Automatic, with the overhead test. |
+| DOTS PICTURE colors 4-8: "some signs do not support the full range" (p. 40). | Not checked on a tricolor Sign. | Witnessed: eight bands, one per color; record how many are lit and distinct. |
+| DOTS PICTURE size against its Memory Configuration entry: "must match" (p. 39). | Not checked. | Automatic, needs erase permission: write a 2x2 picture into a 9x15 File and record what reads back. |
+| The 100 ms pause after a DOTS PICTURE's Width (p. 40). | Needed; always sent. | Automatic, needs erase permission: write without it and record whether it reads back intact. |
+| A DOTS PICTURE read: the manual gives no worked Response. | Rows end in CR; the decoder accepts the forms p. 40 allows. | Automatic, needs erase permission: write Table 60's arrow and read it back (a capture). |
+| Where a called DOTS PICTURE is drawn among text: the manual doesn't say. | At the text cursor. | Witnessed: text, a picture, text. |
 | Memory Configuration limit: whether the Sign takes exactly what note 1 allows. | The model's `memory_needed`, which on the 4120C adds 9 reserved bytes. | Automatic, needs erase permission: the largest File A beside File B is taken, one byte more is not. |
 
 ## Out of Scope
@@ -533,8 +572,8 @@ manual brings in a model field or, for a Capability, the overrides field
 - Alpha's own Ethernet adapters and serial servers.
 - A Sign emulator. It has its own spec, [emulator-spec.md](emulator-spec.md): a
   TypeScript program that the library reaches over `socket://`, with no new Transport.
-- Writing DOTS PICTURE File content. A Memory Configuration can reserve DOTS PICTURE
-  Files already.
+- LARGE and RGB DOTS PICTURE Files (`M`/`N`, `K`/`L`): AlphaVision and Alpha 3.0
+  only. Loading pictures from image files.
 - Counters, Alpha 2.0 and 3.0 Commands and Control Codes, ASCII Printable formats, and
   extended characters past printable ASCII.
 - An inline markup language for content (for now).

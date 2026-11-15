@@ -11,6 +11,8 @@ export interface ReceivedCommand {
   data: string;
   /** Line ms the Command's last byte (ETX, Checksum, or EOT) arrived. */
   atMs: number;
+  /** Line ms each byte of `data` arrived, for pauses inside a Command (p. 40). */
+  dataAtMs: number[];
 }
 
 /** Serial Error Status Register bits (p. 31). Bit 7 is always 0, bit 6 always 1. */

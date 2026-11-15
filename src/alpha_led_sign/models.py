@@ -10,8 +10,9 @@ from dataclasses import dataclass
 from enum import Enum
 from importlib import resources
 
-from alpha_led_sign.protocol.commands import Command, SetMemoryConfiguration
+from alpha_led_sign.protocol.commands import Command, SetMemoryConfiguration, WriteDotsPicture
 from alpha_led_sign.protocol.memory import DotsPictureFile, MemoryFile
+from alpha_led_sign.protocol.pictures import PixelColor
 from alpha_led_sign.protocol.requirements import Capability, requires
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
@@ -277,6 +278,8 @@ def _problems(model: SignModel, command: Command) -> list[str]:
         problems.append(_version_problem(model, command.min_version, command))
     if isinstance(command, SetMemoryConfiguration):
         problems.extend(_memory_problems(model, command))
+    if isinstance(command, WriteDotsPicture):
+        problems.extend(_picture_problems(model, command))
     for code in command.codes():
         version, capability = requires(code)
         if version > newest:
@@ -302,6 +305,36 @@ def _memory_problems(model: SignModel, command: SetMemoryConfiguration) -> list[
         f"{model.name} has {model.memory_bytes:,} bytes of memory, and this Memory "
         f"Configuration needs {needed:,} ({model.file_overhead} bytes of overhead per File)"
     ]
+
+
+def _picture_problems(model: SignModel, command: WriteDotsPicture) -> list[str]:
+    """Table 70: pictures need the Graphic Capability, and note 1 says they must fit the
+    display. Table 69, note 1: an R model shows red only."""
+    picture = command.picture
+    problems: list[str] = []
+    columns, rows = model.columns, model.rows
+    if (
+        columns is not None
+        and rows is not None
+        and (picture.width > columns or picture.height > rows)
+    ):
+        problems.append(
+            f"{model.name}'s display is {columns} x {rows} pixels, and DOTS "
+            f"PICTURE {command.label} is {picture.width} x {picture.height}"
+        )
+    if model.capabilities is None:
+        return problems
+    if Capability.GRAPHIC not in model.capabilities:
+        problems.append(f"{model.name} does not support {Capability.GRAPHIC.value} (DOTS PICTURE)")
+    if Capability.COLOR not in model.capabilities:
+        colors = {pixel for row in picture.rows for pixel in row} - _RED_ONLY_PIXELS
+        if colors:
+            names = ", ".join(sorted(color.name for color in colors))
+            problems.append(f"{model.name} does not support {Capability.COLOR.value} ({names})")
+    return problems
+
+
+_RED_ONLY_PIXELS = frozenset({PixelColor.OFF, PixelColor.RED})
 
 
 def _version_problem(model: SignModel, needed: ProtocolVersion, item: object) -> str:

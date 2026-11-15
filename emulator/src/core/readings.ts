@@ -40,6 +40,16 @@ export interface Readings {
    * flags a buffer overflow; a STRING File is emptied and flags an illegal command.
    */
   oversizedWrite: "measured" | "truncate" | "ignore";
+  /**
+   * SMALL DOTS PICTURE rows sent sooner than 100 ms after the Width. Default "drop"
+   * (p. 40 asks for the pause).
+   */
+  missingDotsPause: "drop" | "accept";
+  /**
+   * A SMALL DOTS PICTURE whose size differs from its Memory Configuration entry.
+   * Default "drop" (p. 39: it "must match"); "accept" keeps it as sent.
+   */
+  dotsPictureSize: "drop" | "accept";
 }
 
 export const DEFAULT_READINGS: Readings = {
@@ -53,4 +63,6 @@ export const DEFAULT_READINGS: Readings = {
   missingStxPause: "drop",
   networkQueryFraming: "response-packet",
   oversizedWrite: "measured",
+  missingDotsPause: "drop",
+  dotsPictureSize: "drop",
 };

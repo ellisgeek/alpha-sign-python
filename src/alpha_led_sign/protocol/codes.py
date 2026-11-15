@@ -301,6 +301,19 @@ class StringRef:
 
 
 @dataclass(frozen=True)
+class DotsPictureRef:
+    """Show a SMALL DOTS PICTURE File (14H + File Label, Appendix G, p. 81)."""
+
+    label: str
+
+    def __post_init__(self) -> None:
+        check_file_label(self.label)
+
+    def encode(self) -> bytes:
+        return b"\x14" + self.label.encode("ascii")
+
+
+@dataclass(frozen=True)
 class RawControl:
     """Control Code bytes the library does not model, kept so they can be sent back as-is."""
 
@@ -331,6 +344,7 @@ _PAIRED = {
     0x07: lambda byte: CharacterFlash(_switch_from(byte)),
     0x0B: lambda byte: CurrentDate(DateFormat(chr(byte))),
     0x10: lambda byte: StringRef(chr(byte)),
+    0x14: lambda byte: DotsPictureRef(chr(byte)),
     0x1A: lambda byte: Font(chr(byte)),
     0x1C: lambda byte: Color(chr(byte)),
     0x1E: lambda byte: Spacing(chr(byte)),
@@ -339,7 +353,6 @@ _PAIRED = {
 # Codes the library keeps as RawControl, with their total length (Appendix G).
 _RAW_LENGTHS = {
     0x08: 2,  # extended character, temperature, or counter
-    0x14: 2,  # call SMALL DOTS PICTURE File
     0x1F: 15,  # call picture or animation File
 }
 

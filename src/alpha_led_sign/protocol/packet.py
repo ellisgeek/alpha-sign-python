@@ -114,7 +114,12 @@ def encode_packet(
             body += ETX
         if checksum:
             body += f"{compute_checksum(STX + body):04X}".encode("ascii")
-        pending += body
+        start = 0
+        for offset, pause in command.pauses_in_data():
+            split = len(command.code) + offset
+            chunks.append(Chunk(pending + body[start:split], pause_after=pause))
+            pending, start = b"", split
+        pending += body[start:]
     chunks.append(Chunk(pending + EOT, pause_after=commands[-1].pause_after))
     return Packet(tuple(chunks))
 

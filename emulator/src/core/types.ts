@@ -130,6 +130,8 @@ export interface TextRun {
   wide: boolean;
   /** Character flash on (07H "1"). */
   flash: boolean;
+  /** Set when the run is a called SMALL DOTS PICTURE (14H): its File Label. `text` is "". */
+  picture?: string;
 }
 
 export interface DisplayState {

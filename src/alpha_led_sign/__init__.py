@@ -16,6 +16,7 @@ from alpha_led_sign.protocol.codes import (
     CurrentDate,
     CurrentTime,
     DateFormat,
+    DotsPictureRef,
     DoubleHigh,
     Font,
     Mode,
@@ -37,6 +38,7 @@ from alpha_led_sign.protocol.memory import (
     TextFile,
 )
 from alpha_led_sign.protocol.message import Frame, Message
+from alpha_led_sign.protocol.pictures import DotsPicture, PixelColor
 from alpha_led_sign.sign import Sign, SignTimeoutError
 from alpha_led_sign.transport import SerialFormat, SerialTransport, Transport
 
@@ -50,13 +52,16 @@ __all__ = [
     "CurrentTime",
     "DateFormat",
     "DiscoveredSign",
+    "DotsPicture",
     "DotsPictureFile",
+    "DotsPictureRef",
     "DoubleHigh",
     "Font",
     "Frame",
     "Message",
     "Mode",
     "PictureColors",
+    "PixelColor",
     "Position",
     "RunDay",
     "RunDays",

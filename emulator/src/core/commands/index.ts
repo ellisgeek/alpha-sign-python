@@ -1,12 +1,18 @@
 // The Command dispatch table. One module per Command family; each exports a
 // `CommandTable` keyed by Command Code. To add a family, add a module and list
 // it in `families` below. Nothing else needs to change.
+import { dotsPictureCommands } from "./dots-picture";
 import { specialFunctionCommands } from "./special-functions";
 import { stringFileCommands } from "./string-file";
 import { textFileCommands } from "./text-file";
 import type { CommandTable } from "./types";
 
-const families: CommandTable[] = [textFileCommands, specialFunctionCommands, stringFileCommands];
+const families: CommandTable[] = [
+  textFileCommands,
+  specialFunctionCommands,
+  stringFileCommands,
+  dotsPictureCommands,
+];
 
 /** Merges families; a Command Code claimed twice is a programming error. */
 export function mergeCommandTables(tables: CommandTable[]): CommandTable {

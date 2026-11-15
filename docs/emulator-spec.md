@@ -329,6 +329,8 @@ hardware checklist or to an assumption written here.
 | Two-digit year on Alpha 1.0 | 1997-2096 window or 19xx | window (p. 28, note 15; a real 4120C used it) |
 | Missing STX pause | drop the nested Command, or accept it | drop (p. 11) |
 | Network Query answer framing | Response Packet with Checksum, or bare data | Response Packet (a real 4120C; p. 32 unclear) |
+| Missing DOTS PICTURE pause | drop the write, or accept it, when the rows come sooner than 100 ms after the Width | drop (p. 40) |
+| DOTS PICTURE size against its File | drop a picture whose size differs from its Memory Configuration entry, or accept it as sent | drop (p. 39: it "must match") |
 | Oversized write | measured, truncate, or ignore | measured: a TEXT File keeps its size + 1 bytes and flags a buffer overflow; a STRING File is emptied and flags an illegal command (a real 4120C; the manual does not say) |
 
 When hardware-results.md gets a row, the default for that Sign Model changes to the
@@ -438,8 +440,8 @@ the emulator in place of a Sign.
   8N1 or 7E2, the USB-serial adapter) is tested against a real Sign, with the hardware
   tests.
 - Parity, framing, and overrun errors, which TCP can't produce.
-- Counters, Alpha 2.0 and 3.0 Commands and Control Codes, DOTS PICTURE content, and
-  extended characters, the same as the library.
+- Counters, Alpha 2.0 and 3.0 Commands and Control Codes, LARGE and RGB DOTS PICTURE
+  Files, and extended characters, the same as the library.
 - Alpha's Ethernet adapters and serial servers, and the ESPHome bridge.
 - Publishing the emulator to npm or hosting the page.
 - Using emulator results as hardware results or as test vectors.
@@ -551,6 +553,13 @@ PROVISIONAL in the code are marked there too.
 - **DOTS PICTURE size.** When the Reading counts a DOTS PICTURE File, it costs
   2 + rows x 2 x ceil(columns / 8) bytes besides the overhead, whatever its color
   depth, as a real 4120C measured.
+- **SMALL DOTS PICTURE Files.** A write (`I`) is stored the way p. 40 says the Sign
+  reads it: LF dropped, each row padded with off pixels or cut to the Width, rows never
+  sent off. A read (`J`) answers with that, each row ended by CR. Before any write it
+  answers with the configured size and no rows. A write blanks the display (p. 39).
+  A called picture (14H) is drawn at the text cursor, at the top of its line, in its own
+  colors; a color past the model's palette draws red. The manual does not say where a
+  picture goes among text; a witnessed hardware test checks it.
 - **Colors.** Autocolor and the default color are drawn red.
 - **Run Sequence.** An empty Run Sequence runs every TEXT File in Label order.
 - **Where the display starts.**

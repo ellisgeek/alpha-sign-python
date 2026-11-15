@@ -2,13 +2,23 @@
 import type { Readings } from "../readings";
 import type { EmulatedClock, StoredFile, TextRun } from "../types";
 import { parseSegments, type Segment } from "./content";
-import { DEFAULT_FONT, doubleColumns, doubleRows, embolden, type Font, fontForCode } from "./fonts";
+import {
+  DEFAULT_FONT,
+  doubleColumns,
+  doubleRows,
+  embolden,
+  type Font,
+  fontForCode,
+  type Glyph,
+} from "./fonts";
 import { DEFAULT_SPEED } from "./modes";
 
 export interface StyledRun extends TextRun {
   face: Font;
   doubleWide: boolean;
   doubleHeight: boolean;
+  /** A called DOTS PICTURE's pixels, drawn in its own colors. */
+  pictureBitmap?: Bitmap;
 }
 
 /** A Frame's text as lines, with the speed it asked for. */
@@ -186,6 +196,24 @@ export function frameText(segments: Segment[], ctx: LayoutContext): FrameText {
           if (file?.type === "STRING" && depth === 0) walk(parseSegments(file.data), depth + 1);
           break;
         }
+        case "picture": {
+          const bitmap = pictureBitmap(ctx.files[seg.label], ctx.paletteSize);
+          if (bitmap) {
+            currentLine().push({
+              text: "",
+              color: 0,
+              font: style.face.name,
+              wide: false,
+              flash: style.flash,
+              face: style.face,
+              doubleWide: false,
+              doubleHeight: false,
+              picture: seg.label,
+              pictureBitmap: bitmap,
+            });
+          }
+          break;
+        }
         case "newLine":
           (pages[pages.length - 1] as StyledRun[][]).push([]);
           break;
@@ -202,7 +230,30 @@ export function frameText(segments: Segment[], ctx: LayoutContext): FrameText {
   return { pages, speed, noHold };
 }
 
+/**
+ * A stored SMALL DOTS PICTURE as pixels: Height and Width, then rows of p. 40 codes,
+ * each ended by <CR> (see commands/dots-picture.ts). Null if `file` is not a written
+ * DOTS PICTURE File. A color past the palette draws as red, as text does.
+ */
+function pictureBitmap(file: StoredFile | undefined, paletteSize: number): Bitmap | null {
+  if (file?.type !== "DOTS" || file.data.length < 4) return null;
+  const height = Number.parseInt(file.data.slice(0, 2), 16);
+  const width = Number.parseInt(file.data.slice(2, 4), 16);
+  if (!(height > 0 && width > 0)) return null;
+  const rows = file.data.slice(4).split("\r");
+  const out = newBitmap(width, height);
+  for (let y = 0; y < height; y++) {
+    const row = rows[y] ?? "";
+    for (let x = 0; x < width; x++) {
+      const code = Number(row[x] ?? "0");
+      out.colors[y * width + x] = Number.isInteger(code) && code < paletteSize ? code : 1;
+    }
+  }
+  return out;
+}
+
 function sameStyle(a: StyledRun, b: StyledRun): boolean {
+  if (a.picture !== undefined || b.picture !== undefined) return false;
   return (
     a.color === b.color &&
     a.face === b.face &&
@@ -215,7 +266,15 @@ function sameStyle(a: StyledRun, b: StyledRun): boolean {
 
 /** The public part of a run. */
 export function plainRun(run: StyledRun): TextRun {
-  return { text: run.text, color: run.color, font: run.font, wide: run.wide, flash: run.flash };
+  const plain: TextRun = {
+    text: run.text,
+    color: run.color,
+    font: run.font,
+    wide: run.wide,
+    flash: run.flash,
+  };
+  if (run.picture !== undefined) plain.picture = run.picture;
+  return plain;
 }
 
 // --- Pixels ---
@@ -252,14 +311,26 @@ const LINE_GAP = 1;
 
 /** One line drawn on its own, glyphs sitting on a common bottom row. */
 export function drawLine(line: StyledRun[]): Bitmap {
-  const glyphs = line.flatMap((run) =>
-    [...run.text].map((ch) => ({ run, g: styledGlyph(run, ch) })),
+  const items = line.flatMap((run): { run: StyledRun; g: Glyph | Bitmap }[] =>
+    run.pictureBitmap
+      ? [{ run, g: run.pictureBitmap }]
+      : [...run.text].map((ch) => ({ run, g: styledGlyph(run, ch) })),
   );
-  const height = Math.max(DEFAULT_FONT.height, ...glyphs.map(({ g }) => g.height));
-  const width = Math.max(0, glyphs.reduce((w, { g }) => w + g.width + CHAR_GAP, 0) - CHAR_GAP);
+  const height = Math.max(DEFAULT_FONT.height, ...items.map(({ g }) => g.height));
+  const width = Math.max(0, items.reduce((w, { g }) => w + g.width + CHAR_GAP, 0) - CHAR_GAP);
   const out = newBitmap(width, height);
   let x0 = 0;
-  for (const { run, g } of glyphs) {
+  for (const { run, g } of items) {
+    if ("colors" in g) {
+      // A called picture sits at the top of the line, in its own colors. Assumption:
+      // the manual does not say where a picture goes among text.
+      const picture = newBitmap(g.width, g.height);
+      picture.colors.set(g.colors);
+      if (run.flash) picture.flash.fill(1);
+      blit(out, picture, x0, 0);
+      x0 += g.width + CHAR_GAP;
+      continue;
+    }
     const y0 = height - g.height;
     for (let y = 0; y < g.height; y++) {
       for (let x = 0; x < g.width; x++) {

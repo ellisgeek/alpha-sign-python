@@ -15,6 +15,7 @@ from alpha_led_sign.protocol.codes import (
     CurrentDate,
     CurrentTime,
     DateFormat,
+    DotsPictureRef,
     DoubleHigh,
     Font,
     Mode,
@@ -40,6 +41,7 @@ from alpha_led_sign.protocol.commands import (
     ProgrammableTone,
     Read,
     ReadDayOfWeek,
+    ReadDotsPicture,
     ReadGeneralInformation,
     ReadSerialErrorStatus,
     ReadSpecial,
@@ -64,6 +66,7 @@ from alpha_led_sign.protocol.commands import (
     TimeFormat,
     Tone,
     Weekday,
+    WriteDotsPicture,
     WriteString,
     WriteText,
 )
@@ -88,6 +91,7 @@ from alpha_led_sign.protocol.packet import (
     decode_response,
     encode_packet,
 )
+from alpha_led_sign.protocol.pictures import DotsPicture, PixelColor
 from alpha_led_sign.protocol.requirements import Capability, Requirement, requires
 from alpha_led_sign.protocol.response import ResponseError, ResponseItem, UnexpectedResponseError
 from alpha_led_sign.protocol.versions import ProtocolVersion
@@ -109,7 +113,9 @@ __all__ = [
     "CurrentDate",
     "CurrentTime",
     "DateFormat",
+    "DotsPicture",
     "DotsPictureFile",
+    "DotsPictureRef",
     "DoubleHigh",
     "Font",
     "Frame",
@@ -121,12 +127,14 @@ __all__ = [
     "NetworkQueryResponse",
     "Packet",
     "PictureColors",
+    "PixelColor",
     "Position",
     "ProgrammableTone",
     "ProtocolVersion",
     "RawControl",
     "Read",
     "ReadDayOfWeek",
+    "ReadDotsPicture",
     "ReadGeneralInformation",
     "ReadSerialErrorStatus",
     "ReadSpecial",
@@ -169,6 +177,7 @@ __all__ = [
     "UnexpectedResponseError",
     "Weekday",
     "Wide",
+    "WriteDotsPicture",
     "WriteString",
     "WriteText",
     "check_file_label",

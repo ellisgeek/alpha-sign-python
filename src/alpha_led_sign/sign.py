@@ -16,6 +16,7 @@ from alpha_led_sign.protocol.commands import (
     GeneralInformation,
     ProgrammableTone,
     Read,
+    ReadDotsPicture,
     ReadGeneralInformation,
     ReadSerialErrorStatus,
     ReadString,
@@ -37,12 +38,14 @@ from alpha_led_sign.protocol.commands import (
     TimeFormat,
     Tone,
     Weekday,
+    WriteDotsPicture,
     WriteString,
     WriteText,
 )
 from alpha_led_sign.protocol.memory import MemoryFile, RunTime
 from alpha_led_sign.protocol.message import Frame, Message, Segment
 from alpha_led_sign.protocol.packet import Recipient, ResponseReader, encode_packet
+from alpha_led_sign.protocol.pictures import DotsPicture
 from alpha_led_sign.protocol.response import ResponseError, UnexpectedResponseError
 from alpha_led_sign.transport import SerialFormat, SerialTransport, Transport, send_packet
 
@@ -250,6 +253,19 @@ class Sign:
     def read_string(self, label: str) -> tuple[Segment, ...]:
         """Read STRING File ``label`` back: its text and Control Codes."""
         return self.query(ReadString(label))
+
+    def write_dots_picture(self, label: str, picture: DotsPicture) -> None:
+        """Write a SMALL DOTS PICTURE File. The display blanks until the picture is in.
+
+        The picture's size must match the File's entry in the Memory Configuration
+        (p. 39); the library does not track that, so check it yourself. A TEXT File
+        shows the picture with ``DotsPictureRef(label)``.
+        """
+        self.send(WriteDotsPicture(label, picture))
+
+    def read_dots_picture(self, label: str) -> DotsPicture:
+        """Read SMALL DOTS PICTURE File ``label`` back. The display pauses meanwhile."""
+        return self.query(ReadDotsPicture(label))
 
     def info(self) -> GeneralInformation:
         """Read firmware, clock, speaker, and memory details."""

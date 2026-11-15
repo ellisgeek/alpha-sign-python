@@ -46,11 +46,14 @@ from alpha_led_sign import (
     Control,
     CurrentDate,
     DateFormat,
+    DotsPicture,
     DotsPictureFile,
+    DotsPictureRef,
     DoubleHigh,
     Frame,
     Message,
     Mode,
+    PictureColors,
     Position,
     SerialFormat,
     SerialTransport,
@@ -66,6 +69,7 @@ from alpha_led_sign import (
 from alpha_led_sign.protocol.commands import (
     Command,
     Tone,
+    WriteDotsPicture,
 )
 from alpha_led_sign.protocol.memory import MemoryFile
 from alpha_led_sign.protocol.message import Segment
@@ -385,6 +389,91 @@ def test_the_largest_memory_configuration_the_sign_takes_is_the_models(sign: Sig
     assert past_limit < at_limit, f"the Sign took File A of {largest + 1} bytes beside File B"
 
 
+# DOTS PICTURE Files
+
+# Table 60, p. 76: a red arrow with one green pixel at its tip, 15 rows x 9 columns.
+ARROW = DotsPicture.parse(
+    "\n".join(
+        [
+            "000000000",
+            "000000000",
+            "000100000",
+            "000110000",
+            "000111000",
+            "000111100",
+            "111111110",
+            "111111112",
+            "111111110",
+            "000111100",
+            "000111000",
+            "000110000",
+            "000100000",
+            "000000000",
+            "000000000",
+        ]
+    )
+)
+
+
+def _picture_file(sign: Sign, label: str, picture: DotsPicture) -> DotsPictureFile:
+    """A DOTS PICTURE File entry the size of ``picture``, in color if the model has it."""
+    capabilities = sign.model.capabilities
+    in_color = capabilities is None or Capability.COLOR in capabilities
+    colors = PictureColors.TRICOLOR if in_color else PictureColors.MONOCHROME
+    return DotsPictureFile(label, rows=picture.height, columns=picture.width, colors=colors)
+
+
+@needs_erase
+def test_a_dots_picture_reads_back_as_written(sign: Sign) -> None:
+    # Checklist: the bytes of a J Response (Table 24). With ALPHA_SIGN_CAPTURE set, the
+    # capture holds them.
+    sign.configure_memory([TextFile("A", size=64), _picture_file(sign, "P", ARROW)])
+
+    sign.write_dots_picture("P", ARROW)
+
+    assert sign.read_dots_picture("P") == ARROW
+
+
+@needs_erase
+def test_a_dots_picture_of_another_size_than_its_file(
+    sign: Sign, request: pytest.FixtureRequest
+) -> None:
+    # Checklist: p. 39 says the size must match the Memory Configuration. The library
+    # does not check it; this records what the Sign does instead.
+    small = DotsPicture.parse("11\n11")
+    sign.configure_memory([TextFile("A", size=64), _picture_file(sign, "P", ARROW)])
+
+    sign.write_dots_picture("P", small)
+    back = sign.read_dots_picture("P")
+
+    result = f"wrote 2x2 into a 9x15 File, read back {back.width}x{back.height}: {back.rows!r}"
+    request.node.user_properties.append(("size mismatch", result))
+    print(f"\n{result}")
+
+
+@dataclass(frozen=True)
+class UnpausedWriteDotsPicture(WriteDotsPicture):
+    """A DOTS PICTURE write without the pause p. 40 asks for after the Width."""
+
+    def pauses_in_data(self) -> tuple[tuple[int, float], ...]:
+        return ()
+
+
+@needs_erase
+def test_a_dots_picture_written_without_the_pause(
+    sign: Sign, request: pytest.FixtureRequest
+) -> None:
+    # Checklist: p. 40 asks for 100 ms after the Width. The library always pauses; this
+    # records whether the Sign needs it.
+    sign.configure_memory([TextFile("A", size=64), _picture_file(sign, "P", ARROW)])
+
+    sign.send(UnpausedWriteDotsPicture("P", ARROW))
+    intact = sign.read_dots_picture("P") == ARROW
+
+    request.node.user_properties.append(("intact without the pause", intact))
+    print(f"\nwithout the pause the picture arrived {'intact' if intact else 'damaged'}")
+
+
 # Witnessed tests
 
 
@@ -505,3 +594,42 @@ def test_the_two_digit_year_is_read_as_20xx(sign: Sign, ask: Callable[[str, str]
         sign.set_clock(datetime.now())
 
     assert answer == "y"
+
+
+@pytest.mark.witness
+@needs_witness
+@needs_erase
+def test_a_dots_picture_is_drawn_between_the_text_around_it(
+    sign: Sign, ask: Callable[[str, str], str]
+) -> None:
+    # Checklist: the manual doesn't say where a called picture goes. The emulator draws
+    # it at the text cursor.
+    sign.configure_memory([TextFile("A", size=64), _picture_file(sign, "P", ARROW)])
+    sign.write_dots_picture("P", ARROW)
+
+    sign.write_text("A", Frame(Mode.HOLD, Position.FILL, ["AB", DotsPictureRef("P"), "CD"]))
+
+    assert ask("Was an arrow drawn between AB and CD?", "yn") == "y"
+
+
+@pytest.mark.witness
+@needs_witness
+@needs_erase
+def test_which_pixel_colors_the_sign_shows(
+    sign: Sign, ask: Callable[[str, str], str], request: pytest.FixtureRequest
+) -> None:
+    # Checklist: p. 40 lists colors 1-8, and "some signs do not support the full range".
+    # The library does not check 4-8 on a tricolor Sign; this records what it shows.
+    bands = DotsPicture.parse("\n".join(["".join(code * 4 for code in "12345678")] * 8))
+    sign.configure_memory([TextFile("A", size=64), _picture_file(sign, "P", bands)])
+    sign.write_dots_picture("P", bands)
+    sign.write_text("A", Frame(Mode.HOLD, Position.FILL, [DotsPictureRef("P")]))
+
+    print(
+        "\nEight bands, left to right: red, green, amber, dim red, dim green, brown, "
+        "orange, yellow."
+    )
+    lit = ask("How many bands are lit?", "012345678")
+    distinct = ask("How many different colors do the lit bands show?", "012345678")
+
+    request.node.user_properties.extend([("bands lit", lit), ("distinct colors", distinct)])

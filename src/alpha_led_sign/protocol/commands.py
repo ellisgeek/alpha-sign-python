@@ -19,6 +19,7 @@ from alpha_led_sign.protocol.message import (
     encode_content,
     normalize_content,
 )
+from alpha_led_sign.protocol.pictures import DotsPicture, decode_dots_picture
 from alpha_led_sign.protocol.response import ResponseError, ResponseItem, UnexpectedResponseError
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
@@ -33,6 +34,10 @@ class Command(ABC):
     def pause_after(self) -> float:
         """Seconds of silence the Sign needs after this Command before it can take more data."""
         return 0.0
+
+    def pauses_in_data(self) -> tuple[tuple[int, float], ...]:
+        """Silences the Sign needs inside the Data Field: (offset into the data, seconds)."""
+        return ()
 
     must_be_last: ClassVar[bool] = False
     """True if this Command may only be the last one in a nested Packet (p. 11)."""
@@ -458,6 +463,38 @@ class WriteString(Command):
         return (segment for segment in self.content if not isinstance(segment, str))
 
 
+DOTS_PICTURE_ROWS_PAUSE = 0.1
+"""Seconds of silence a SMALL DOTS PICTURE write needs after its Width (p. 40)."""
+
+
+@dataclass(frozen=True)
+class WriteDotsPicture(Command):
+    """Write a SMALL DOTS PICTURE File (Table 22, p. 39). The display blanks until it ends.
+
+    The picture's height and width must match the File's entry in the Memory
+    Configuration (p. 39).
+    """
+
+    code: ClassVar[str] = "I"
+    label: str
+    picture: DotsPicture
+
+    def __post_init__(self) -> None:
+        check_file_label(self.label)
+
+    def encode_data(self) -> bytes:
+        size = f"{self.label}{self.picture.height:02X}{self.picture.width:02X}"
+        rows = b"".join(
+            "".join(pixel.value for pixel in row).encode("ascii") + b"\r"
+            for row in self.picture.rows
+        )
+        return size.encode("ascii") + rows
+
+    def pauses_in_data(self) -> tuple[tuple[int, float], ...]:
+        # p. 40: at least 100 ms after the Width, before the Row Bit Patterns.
+        return ((len(self.label) + 4, DOTS_PICTURE_ROWS_PAUSE),)
+
+
 class Read[T](Command):
     """A Command that asks the Sign for data. It must be the last Command in a Packet."""
 
@@ -508,6 +545,24 @@ class ReadString(Read[tuple[Segment, ...]]):
 
     def parse(self, response: Sequence[ResponseItem]) -> tuple[Segment, ...]:
         return decode_content(_find(response, "G", self.label, f"STRING File {self.label}"))
+
+
+@dataclass(frozen=True)
+class ReadDotsPicture(Read[DotsPicture]):
+    """Read a SMALL DOTS PICTURE File (Table 23, p. 41). The Sign answers with an "I"."""
+
+    code: ClassVar[str] = "J"
+    label: str
+
+    def __post_init__(self) -> None:
+        check_file_label(self.label)
+
+    def encode_data(self) -> bytes:
+        return self.label.encode("ascii")
+
+    def parse(self, response: Sequence[ResponseItem]) -> DotsPicture:
+        data = _find(response, "I", self.label, f"DOTS PICTURE File {self.label}")
+        return decode_dots_picture(data)
 
 
 class ReadSpecial[T](Read[T]):

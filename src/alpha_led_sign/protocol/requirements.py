@@ -15,6 +15,7 @@ from alpha_led_sign.protocol.codes import (
     Control,
     CurrentDate,
     CurrentTime,
+    DotsPictureRef,
     DoubleHigh,
     Font,
     Mode,
@@ -222,5 +223,7 @@ def _capability(code: object) -> Capability | None:
             return Capability.DATE
         case StringRef():
             return Capability.STRING
+        case DotsPictureRef():
+            return Capability.GRAPHIC
         case _:
             return None

@@ -22,6 +22,8 @@ export type Segment =
   | { kind: "noHold" }
   /** 10H + STRING File Label. */
   | { kind: "string"; label: string }
+  /** 14H + SMALL DOTS PICTURE File Label. */
+  | { kind: "picture"; label: string }
   /** 13H. */
   | { kind: "time" }
   /** 0BH + format "0"-"9". */
@@ -93,6 +95,8 @@ function controlSegment(code: string): Segment {
       return { kind: "wide", on: true };
     case "\x13":
       return { kind: "time" };
+    case "\x14":
+      return { kind: "picture", label: arg };
     case "\x15":
     case "\x16":
     case "\x17":

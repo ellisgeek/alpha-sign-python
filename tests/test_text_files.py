@@ -12,6 +12,7 @@ from alpha_led_sign.protocol.codes import (
     CurrentDate,
     CurrentTime,
     DateFormat,
+    DotsPictureRef,
     DoubleHigh,
     Font,
     Mode,
@@ -93,6 +94,7 @@ def test_empty_priority_text_file_disables_it_matching_table_51() -> None:
         (CurrentDate(DateFormat.MM_DD_YY_SLASH), b"\x0b0"),
         (CurrentDate(DateFormat.DAY_OF_WEEK), b"\x0b9"),
         (StringRef("T"), b"\x10T"),
+        (DotsPictureRef("A"), b"\x14A"),  # p. 81: Call SMALL DOTS PICTURE
     ],
 )
 def test_control_codes_match_appendix_g(code: ControlCode, expected: bytes) -> None:

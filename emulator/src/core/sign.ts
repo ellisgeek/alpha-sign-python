@@ -41,6 +41,8 @@ interface PendingCommand {
   body: string;
   stxAtMs: number;
   nested: boolean;
+  /** Line ms each byte of `body` arrived. */
+  times: number[];
   /** Set when the first byte after a nested STX came too soon. */
   missedPause: boolean;
 }
@@ -95,7 +97,7 @@ export function createSign(
   function startCommand(atMs: number, nested: boolean): void {
     parser = {
       kind: "body",
-      cmd: { body: "", stxAtMs: atMs, nested, missedPause: false },
+      cmd: { body: "", stxAtMs: atMs, nested, times: [], missedPause: false },
     };
   }
 
@@ -132,7 +134,12 @@ export function createSign(
       }
       return;
     }
-    const received: ReceivedCommand = { code, data: cmd.body.slice(1), atMs };
+    const received: ReceivedCommand = {
+      code,
+      data: cmd.body.slice(1),
+      atMs,
+      dataAtMs: cmd.times.slice(1),
+    };
     const blockedUntil = state.inputBlockedUntilMs;
     handler(received, context(atMs));
     if (state.inputBlockedUntilMs > blockedUntil) packetStartedSilence = true;
@@ -197,7 +204,10 @@ export function createSign(
           ignore(atMs, "malformed-packet", "Command not ended by ETX before STX/SOH", cmd.body);
           abandonPacket();
           parser = ch === SOH ? { kind: "header", buf: "" } : { kind: "skip" };
-        } else cmd.body += ch;
+        } else {
+          cmd.body += ch;
+          cmd.times.push(atMs);
+        }
         return;
       }
       case "afterEtx": {

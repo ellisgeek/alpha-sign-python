@@ -3,6 +3,7 @@
 import pytest
 
 from alpha_led_sign.protocol.codes import (
+    DotsPictureRef,
     Font,
     Mode,
     Position,
@@ -20,6 +21,8 @@ from alpha_led_sign.protocol.versions import ProtocolVersion
         (Position.LEFT, (ProtocolVersion.ALPHA_3_0, Capability.LEFT_RIGHT_POSITION)),  # 12, 68
         (Position.TOP, (ProtocolVersion.EZ_KEY_II, None)),  # Table 12
         (SpecialGraphic.FIREWORKS, (ProtocolVersion.EZ_KEY_II, Capability.ANIMATION)),  # 66
+        # p. 81; Table 70's Graphic column.
+        (DotsPictureRef("A"), (ProtocolVersion.EZ_KEY_II, Capability.GRAPHIC)),
     ],
 )
 def test_codes_need_what_the_manual_says(

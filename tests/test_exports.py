@@ -10,7 +10,8 @@ import pytest
 PUBLIC = {
     "alpha_led_sign": {
         "Attribute", "CharacterAttribute", "CharacterFlash", "Color", "Control",
-        "CurrentDate", "CurrentTime", "DateFormat", "DiscoveredSign", "DotsPictureFile",
+        "CurrentDate", "CurrentTime", "DateFormat", "DiscoveredSign", "DotsPicture",
+        "DotsPictureFile", "DotsPictureRef", "PixelColor",
         "DoubleHigh", "Font", "Frame", "Message", "Mode", "PictureColors", "Position",
         "RunDay", "RunDays", "RunOrder", "RunTime", "SerialFormat", "SerialTransport",
         "Sign", "SignModel", "SignTimeoutError", "Spacing", "SpecialGraphic",
@@ -21,7 +22,9 @@ PUBLIC = {
     "alpha_led_sign.protocol": {
         "Attribute", "Beep", "Capability", "CharacterAttribute", "CharacterFlash", "Chunk",
         "ClearMemory", "ClearSerialErrorStatus", "Color", "Command", "Control",
-        "ControlCode", "CurrentDate", "CurrentTime", "DateFormat", "DotsPictureFile",
+        "ControlCode", "CurrentDate", "CurrentTime", "DateFormat", "DotsPicture",
+        "DotsPictureFile", "DotsPictureRef", "PixelColor", "ReadDotsPicture",
+        "WriteDotsPicture",
         "DoubleHigh", "Font", "Frame", "GeneralInformation", "MemoryFile", "Message",
         "Mode", "NetworkQuery", "NetworkQueryResponse", "PRIORITY_LABEL", "Packet",
         "PictureColors", "Position", "ProgrammableTone", "ProtocolVersion", "RawControl",

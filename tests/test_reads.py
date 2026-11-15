@@ -14,6 +14,7 @@ from alpha_led_sign.protocol.codes import (
     CurrentDate,
     CurrentTime,
     DateFormat,
+    DotsPictureRef,
     DoubleHigh,
     Font,
     Mode,
@@ -69,6 +70,7 @@ def test_read_text_parses_the_response_in_table_46() -> None:
         (b"\x1c3", Color.AMBER),  # p. 82
         (b"\x1a3", Font.SEVEN_HIGH),  # p. 82
         (b"\x10T", StringRef("T")),  # p. 81
+        (b"\x14A", DotsPictureRef("A")),  # p. 81
         (b"\x16", Speed.SPEED_2),  # p. 81
         (b"\x12", Wide(True)),  # p. 81
         (b"\x11", Wide(False)),  # p. 81

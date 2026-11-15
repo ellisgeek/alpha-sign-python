@@ -19,7 +19,9 @@ describe("Packet parser", () => {
     const { line, received } = lineWith("A");
     line.receive(bytes(`${SYNC}\x01Z00\x02AAHELLO\x04`), 0);
     line.advance(10);
-    expect(received).toEqual([{ code: "A", data: "AHELLO", atMs: 0 }]);
+    expect(received).toEqual([
+      { code: "A", data: "AHELLO", atMs: 0, dataAtMs: [0, 0, 0, 0, 0, 0] },
+    ]);
   });
 
   it("accepts five SOHs in place of the sync NULs (Table 4 item A)", () => {
