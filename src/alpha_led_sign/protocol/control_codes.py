@@ -34,18 +34,26 @@ from alpha_led_sign.protocol.codes import (
 
 @dataclass(frozen=True)
 class ControlCodeKind[C: ControlCode]:
-    """Everything the library knows about one Control Code type."""
+    """Everything the library knows about one Control Code type.
+
+    Attributes:
+        type: The Control Code type.
+        values: Every value of the type, for decoding. Empty for a File Label
+            reference, whose values are its lead byte plus any label, and for
+            RawControl.
+        capability: Gives the Capability a value needs (Tables 68-70, Appendix G),
+            or None.
+        in_string_file: Gives whether a STRING File may hold the value (Table 19,
+            p. 37).
+        label_lead: For a File Label reference, the byte before the label
+            (Appendix G, p. 81).
+    """
 
     type: type[C]
     values: tuple[C, ...]
-    """Every value of the type, for decoding. Empty for a File Label reference, whose
-    values are its lead byte plus any label, and for RawControl."""
     capability: Callable[[C], Capability | None]
-    """The Capability a value needs (Tables 68-70, Appendix G), or None."""
     in_string_file: Callable[[C], bool] = field(default=lambda _: False)
-    """Whether a STRING File may hold the value (Table 19, p. 37)."""
     label_lead: int | None = None
-    """For a File Label reference: the byte before the label (Appendix G, p. 81)."""
 
 
 def _switches[S](make: Callable[[bool], S]) -> tuple[S, ...]:
@@ -133,19 +141,40 @@ _BY_TYPE: dict[type, ControlCodeKind[Any]] = {kind.type: kind for kind in KINDS}
 
 
 def kind_of(code: object) -> ControlCodeKind[Any] | None:
-    """The table entry for ``code``'s type, or None if it is not a Control Code."""
+    """Find the table entry for a code's type.
+
+    Args:
+        code: Any object.
+
+    Returns:
+        The entry, or None if ``code`` is not a Control Code.
+    """
     return _BY_TYPE.get(type(code))
 
 
 def examples(kind: ControlCodeKind[Any]) -> tuple[ControlCode, ...]:
-    """Every value of ``kind``, or one with File Label ``A`` for a label reference."""
+    """List example values of a Control Code type, for tests.
+
+    Args:
+        kind: The table entry.
+
+    Returns:
+        Every value of the type, or one with File Label ``A`` for a label reference.
+    """
     if kind.label_lead is not None:
         return (kind.type("A"),)
     return kind.values
 
 
 def allowed_in_string_file(segment: object) -> bool:
-    """Table 19, p. 37: whether a STRING File may hold ``segment``. Text always may."""
+    """Check whether a STRING File may hold a Segment (Table 19, p. 37).
+
+    Args:
+        segment: Literal text or a Control Code.
+
+    Returns:
+        True for literal text, and for a Control Code that Table 19 allows.
+    """
     if isinstance(segment, str):
         return True
     kind = kind_of(segment)
@@ -173,7 +202,17 @@ _LENGTHS: dict[int, int] = {
 
 
 def decode_control(data: bytes, start: int) -> tuple[ControlCode, int]:
-    """Decode the Control Code at ``data[start]``; return it and the index after it."""
+    """Decode the Control Code that starts at ``data[start]``.
+
+    A code the library does not model is kept whole as a RawControl.
+
+    Args:
+        data: TEXT or STRING File data.
+        start: The index of the Control Code's first byte.
+
+    Returns:
+        The Control Code, and the index of the byte after it.
+    """
     for length in range(_LONGEST, 0, -1):
         code = _BY_BYTES.get(data[start : start + length])
         if code is not None:

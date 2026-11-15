@@ -4,7 +4,14 @@ from enum import Enum
 
 
 class Capability(Enum):
-    """One feature a Sign Model can or cannot use, one per column of Tables 68-70."""
+    """One feature a Sign Model can or cannot use, one per column of Tables 68-70.
+
+    The value is a readable name, used in validation messages. A few members are not
+    columns of the tables but notes in Appendix G: ``BETABRITE_1036_FONTS`` and
+    ``BETABRITE_1036_ANIMATIONS`` (BetaBrite model 1036 only), ``AUXILIARY_PORT``
+    (Series 4000 and 7000 only), and ``SHADOW`` (BetaBrite model 1036 and
+    AlphaPremiere 9000 only).
+    """
 
     # Table 68: Modes.
     AUTOMODE = "automode"
@@ -65,6 +72,4 @@ class Capability(Enum):
     BETABRITE_1036_ANIMATIONS = "BetaBrite 1036 animations"
     # Not in the tables: Appendix G, p. 82 limits these character attributes.
     AUXILIARY_PORT = "auxiliary port"
-    """Series 4000 and 7000 Signs only."""
     SHADOW = "shadow characters"
-    """BetaBrite model 1036 and AlphaPremiere 9000 Signs only."""

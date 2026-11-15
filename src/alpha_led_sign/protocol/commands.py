@@ -37,16 +37,33 @@ from alpha_led_sign.protocol.versions import ProtocolVersion
 
 @dataclass(frozen=True)
 class Pause:
-    """Seconds of silence the Sign needs at this point in a Command's data."""
+    """Silence the Sign needs at this point in a Command's data.
+
+    A Command's ``encode_data`` returns one between two pieces of bytes, and the
+    Packet encoder splits the Chunk there.
+
+    Attributes:
+        seconds: How long the line must stay quiet.
+    """
 
     seconds: float
 
 
 class Command(ABC):
-    """One Command. Subclasses set ``code`` and implement ``encode_data``."""
+    """One Command: a Command Code and its data.
+
+    Subclass it to add a Command the library lacks: set ``code`` and implement
+    ``encode_data``. The Packet encoder and validation need nothing else. Override
+    ``codes`` or ``requirements`` so that validation sees what the Command needs.
+
+    Attributes:
+        code: The one-character Command Code (Table 6, p. 11).
+        must_be_last: True if the Command may only be the last one in a nested Packet
+            (p. 11), as reads and tones must.
+        min_version: The earliest Protocol Version that has the Command.
+    """
 
     code: ClassVar[str]
-    """The one-character Command Code (Table 6, p. 11)."""
 
     @property
     def pause_after(self) -> float:
@@ -54,29 +71,35 @@ class Command(ABC):
         return 0.0
 
     must_be_last: ClassVar[bool] = False
-    """True if this Command may only be the last one in a nested Packet (p. 11)."""
 
     min_version: ClassVar[ProtocolVersion] = ProtocolVersion.EZ_KEY_II
-    """The earliest Protocol Version that has this Command."""
 
     @abstractmethod
     def encode_data(self) -> bytes | Sequence[bytes | Pause]:
-        """Return the Data Field that follows the Command Code.
+        """Encode the Data Field that follows the Command Code.
 
-        A Command that needs the line quiet partway through its data returns the data
-        in pieces with a Pause where each silence falls, so the pause sits where the
-        layout puts it.
+        Returns:
+            The data as bytes. A Command that needs the line quiet partway through
+            its data returns it in pieces, with a Pause where each silence falls.
         """
 
     def codes(self) -> Iterable[object]:
-        """The Modes, Display Positions, and Control Codes in this Command's data."""
+        """List the Modes, Display Positions, and Control Codes in the Command's data.
+
+        Returns:
+            The codes, for validation. The default is none.
+        """
         return ()
 
     def requirements(self) -> Iterator[Requirement]:
-        """Everything this Command needs from a Sign Model to be shown as written.
+        """List what this Command needs from a Sign Model to be shown as written.
 
-        By default: ``min_version`` and what each of ``codes()`` requires. A Command
-        that needs more, such as room in memory, adds to these.
+        A Command that needs more than the default, such as room in memory, adds to
+        these.
+
+        Yields:
+            A VersionRequirement for ``min_version`` when it is later than EZ KEY II,
+            then the Requirements of each of ``codes()``.
         """
         if self.min_version > ProtocolVersion.EZ_KEY_II:
             yield VersionRequirement(self.min_version, self)
@@ -93,7 +116,17 @@ PRIORITY_MAX_BYTES = 125
 
 @dataclass(frozen=True)
 class WriteText(Command):
-    """Write a Message to a TEXT File (p. 18). Writing blanks the display."""
+    """Write a Message to a TEXT File (p. 18). Writing blanks the display.
+
+    Attributes:
+        label: The TEXT File's File Label. ``PRIORITY_LABEL`` writes the Priority
+            TEXT File.
+        message: The content.
+
+    Raises:
+        ValueError: The File Label is invalid, or the Priority TEXT File's Message
+            encodes to more than 125 bytes.
+    """
 
     code: ClassVar[str] = "A"
     label: str
@@ -108,12 +141,28 @@ class WriteText(Command):
             )
 
     def encode_data(self) -> bytes:
+        """Encode the File Label and the Message.
+
+        Returns:
+            The Data Field.
+        """
         return self.label.encode("ascii") + self.message.encode()
 
     def codes(self) -> Iterable[object]:
+        """List the Modes, Display Positions, and Control Codes in the Message.
+
+        Returns:
+            The codes, in order.
+        """
         return self.message.codes()
 
     def requirements(self) -> Iterator[Requirement]:
+        """List what this Command needs from a Sign Model.
+
+        Yields:
+            The base Requirements, then a FontPositionRequirement for each font taller
+            than 7 rows in a Frame that has a Mode Field.
+        """
         yield from super().requirements()
         for frame in self.message.frames:
             if frame.mode is None:
@@ -123,32 +172,61 @@ class WriteText(Command):
 
 
 class SpecialFunction(Command):
-    """A Write SPECIAL FUNCTION Command (Table 15, p. 21): a label and its data."""
+    """A Write SPECIAL FUNCTION Command (Table 15, p. 21): a label and its data.
+
+    Subclasses set ``label`` and override ``encode_payload``.
+
+    Attributes:
+        label: The one-character Special Function label.
+    """
 
     code: ClassVar[str] = "E"
     label: ClassVar[str]
 
     def encode_data(self) -> bytes:
+        """Encode the Special Function label and its data.
+
+        Returns:
+            ``label`` followed by ``encode_payload()``.
+        """
         return self.label.encode("ascii") + self.encode_payload()
 
     def encode_payload(self) -> bytes:
-        """The Special Functions Data that follows the label."""
+        """Encode the Special Functions Data that follows the label.
+
+        Returns:
+            The data. The default is empty.
+        """
         return b""
 
 
 @dataclass(frozen=True)
 class SetTime(SpecialFunction):
-    """Set the time of day (" ", p. 21). Seconds are ignored."""
+    """Set the time of day (" ", p. 21). Seconds are ignored.
+
+    Attributes:
+        time: The time to set.
+    """
 
     label: ClassVar[str] = " "
     time: time
 
     def encode_payload(self) -> bytes:
+        """Encode the time as four digits, hhmm, in 24-hour time.
+
+        Returns:
+            The Special Functions Data.
+        """
         return f"{self.time.hour:02d}{self.time.minute:02d}".encode("ascii")
 
 
 class TimeFormat(Enum):
-    """How a Sign shows the time ("'", p. 22)."""
+    """How a Sign shows the time ("'", p. 22).
+
+    Attributes:
+        AM_PM: 12-hour time with AM or PM.
+        TWENTY_FOUR_HOUR: 24-hour time.
+    """
 
     AM_PM = "S"
     TWENTY_FOUR_HOUR = "M"
@@ -156,18 +234,38 @@ class TimeFormat(Enum):
 
 @dataclass(frozen=True)
 class SetTimeFormat(SpecialFunction):
-    """Choose 12-hour (am/pm) or 24-hour time ("'", p. 22)."""
+    """Choose 12-hour (AM/PM) or 24-hour time ("'", p. 22).
+
+    Attributes:
+        format: The time format.
+    """
 
     label: ClassVar[str] = "'"
     format: TimeFormat
 
     def encode_payload(self) -> bytes:
+        """Encode the format as ``S`` (AM/PM) or ``M`` (24-hour).
+
+        Returns:
+            The Special Functions Data.
+        """
         return self.format.value.encode("ascii")
 
 
 @dataclass(frozen=True, init=False)
 class SetMemoryConfiguration(SpecialFunction):
-    """Replace the Memory Configuration ("$", p. 21). This erases every File on the Sign."""
+    """Replace the Memory Configuration ("$", p. 21). This erases every File on the Sign.
+
+    Args:
+        files: The Files the Sign should have.
+
+    Attributes:
+        files: The Files, in order.
+
+    Raises:
+        ValueError: ``files`` is empty, or a TEXT File other than the last has size
+            0.
+    """
 
     label: ClassVar[str] = "$"
     files: tuple[MemoryFile, ...]
@@ -184,9 +282,19 @@ class SetMemoryConfiguration(SpecialFunction):
         object.__setattr__(self, "files", tuple(files))
 
     def encode_payload(self) -> bytes:
+        """Encode one entry for each File, in order.
+
+        Returns:
+            The Special Functions Data.
+        """
         return b"".join(file.encode() for file in self.files)
 
     def requirements(self) -> Iterator[Requirement]:
+        """List what this Command needs from a Sign Model.
+
+        Yields:
+            The base Requirements, then a MemoryRequirement for the Files.
+        """
         yield from super().requirements()
         yield MemoryRequirement(self.files)
 
@@ -204,6 +312,7 @@ class ClearMemory(SpecialFunction):
 
     @property
     def pause_after(self) -> float:
+        """Seconds the Sign needs after Clear Memory: 1.5, measured on a 4120C."""
         return CLEAR_MEMORY_PAUSE
 
 
@@ -212,6 +321,15 @@ class SetRunTimes(SpecialFunction):
     """Set when TEXT Files run each day (")", p. 22). Other Files keep their Run Times.
 
     Writing it ends a Priority TEXT File (p. 20).
+
+    Args:
+        run_times: A Run Time for each File Label.
+
+    Attributes:
+        run_times: The File Labels and Run Times, in order.
+
+    Raises:
+        ValueError: A File Label is invalid.
     """
 
     label: ClassVar[str] = ")"
@@ -223,6 +341,11 @@ class SetRunTimes(SpecialFunction):
         object.__setattr__(self, "run_times", tuple(run_times.items()))
 
     def encode_payload(self) -> bytes:
+        """Encode each File Label followed by its Run Time.
+
+        Returns:
+            The Special Functions Data.
+        """
         return b"".join(
             file_label.encode("ascii") + run_time.encode()
             for file_label, run_time in self.run_times
@@ -236,6 +359,12 @@ class SetDate(SpecialFunction):
     Only years 1997-2096 are accepted. p. 28, note 15 gives that window for the
     two-digit year on Alpha 2.0 and later only. It is applied to every Sign until a
     hardware check shows how an Alpha 1.0 Sign reads the year.
+
+    Attributes:
+        date: The date to set.
+
+    Raises:
+        ValueError: The year is outside 1997-2096.
     """
 
     label: ClassVar[str] = ";"
@@ -247,6 +376,11 @@ class SetDate(SpecialFunction):
             raise ValueError(f"a Sign's date must be in 1997-2096, got {self.date.year}")
 
     def encode_payload(self) -> bytes:
+        """Encode the date as mmddyy.
+
+        Returns:
+            The Special Functions Data.
+        """
         return self.date.strftime("%m%d%y").encode("ascii")
 
 
@@ -263,35 +397,76 @@ class Weekday(Enum):
 
     @classmethod
     def of(cls, day: date) -> "Weekday":
-        """The Weekday ``day`` falls on."""
+        """Find the day of the week a date falls on.
+
+        Args:
+            day: The date.
+
+        Returns:
+            Its day of the week.
+
+        Examples:
+            >>> from datetime import date
+            >>> from alpha_led_sign import Weekday
+            >>> Weekday.of(date(2026, 11, 15))
+            <Weekday.SUNDAY: '1'>
+        """
         return cls(str(day.isoweekday() % 7 + 1))
 
 
 @dataclass(frozen=True)
 class SetDayOfWeek(SpecialFunction):
-    """Set the day of the week ("&", p. 22). The Sign advances it at midnight."""
+    """Set the day of the week ("&", p. 22). The Sign advances it at midnight.
+
+    Attributes:
+        day: The day to set.
+    """
 
     label: ClassVar[str] = "&"
     day: Weekday
 
     def encode_payload(self) -> bytes:
+        """Encode the day as one digit, 1 for Sunday to 7 for Saturday.
+
+        Returns:
+            The Special Functions Data.
+        """
         return self.day.value.encode("ascii")
 
 
 class RunOrder(Enum):
-    """How the Run Sequence picks the next TEXT File ("." K field, p. 23)."""
+    """How the Run Sequence picks the next TEXT File ("." K field, p. 23).
+
+    Attributes:
+        BY_RUN_TIME: Run each File during its Run Time. The default.
+        IN_ORDER: Run every File in order, ignoring Run Times.
+        DELETE_WHEN_DONE: Run each File during its Run Time, then delete it when its
+            Stop Time passes.
+    """
 
     BY_RUN_TIME = "T"
-    """Run each File during its Run Time (the default)."""
     IN_ORDER = "S"
-    """Run every File in order, ignoring Run Times."""
     DELETE_WHEN_DONE = "D"
-    """Run each File during its Run Time, then delete it when its Stop Time passes."""
 
 
 @dataclass(frozen=True, init=False)
 class SetRunSequence(SpecialFunction):
-    """Set the order the Sign shows TEXT Files in (".", p. 23)."""
+    """Set the order the Sign shows TEXT Files in (".", p. 23).
+
+    Args:
+        labels: The File Labels of 1 to 128 TEXT Files, in order.
+        order: How the Sign picks the next File.
+        locked: Stop the Run Sequence from being changed with the IR keyboard.
+
+    Attributes:
+        labels: The File Labels, in order.
+        order: How the Sign picks the next File.
+        locked: Whether the IR keyboard can change the Run Sequence.
+
+    Raises:
+        ValueError: There are no labels or more than 128, or a File Label is
+            invalid.
+    """
 
     label: ClassVar[str] = "."
     labels: tuple[str, ...]
@@ -315,12 +490,27 @@ class SetRunSequence(SpecialFunction):
         object.__setattr__(self, "locked", locked)
 
     def encode_payload(self) -> bytes:
+        """Encode the run order, the lock byte, then the File Labels.
+
+        Returns:
+            The Special Functions Data.
+        """
         order = self.order.value.encode("ascii")
         return order + lock_byte(self.locked) + "".join(self.labels).encode("ascii")
 
 
 class RunDay(Enum):
-    """The first day (or set of days) a TEXT File runs ("2" S field, p. 24)."""
+    """The first day, or the set of days, a TEXT File runs ("2" S field, p. 24).
+
+    Attributes:
+        DAILY: Every day.
+        SUNDAY: From Sunday to the stop day. The other single days work the same
+            way.
+        WEEKDAYS: Monday to Friday.
+        WEEKENDS: Saturday and Sunday.
+        ALWAYS: Always.
+        NEVER: Never.
+    """
 
     DAILY = "0"
     SUNDAY = "1"
@@ -340,19 +530,42 @@ class RunDay(Enum):
 class RunDays:
     """The days a TEXT File runs: from ``start`` to ``stop``.
 
-    ``stop`` only matters when ``start`` is a single day; the Sign still needs a value.
+    Attributes:
+        start: The first day, or a set of days such as ``RunDay.WEEKDAYS``.
+        stop: The last day. It matters only when ``start`` is a single day, but the
+            Sign needs a value either way.
+
+    Examples:
+        >>> from alpha_led_sign import RunDay, RunDays, Weekday
+        >>> RunDays(RunDay.MONDAY, Weekday.THURSDAY).encode()
+        b'25'
     """
 
     start: RunDay
     stop: Weekday = Weekday.SUNDAY
 
     def encode(self) -> bytes:
+        """Encode the start and stop days.
+
+        Returns:
+            Two characters: the start day's code, then the stop day's.
+        """
         return (self.start.value + self.stop.value).encode("ascii")
 
 
 @dataclass(frozen=True, init=False)
 class SetRunDays(SpecialFunction):
-    """Set which days TEXT Files run ("2", p. 24). Writing it ends a Priority TEXT File."""
+    """Set which days TEXT Files run ("2", p. 24). Writing it ends a Priority TEXT File.
+
+    Args:
+        run_days: The Run Days for each File Label.
+
+    Attributes:
+        run_days: The File Labels and Run Days, in order.
+
+    Raises:
+        ValueError: A File Label is invalid.
+    """
 
     label: ClassVar[str] = "2"
     run_days: tuple[tuple[str, RunDays], ...]
@@ -363,6 +576,11 @@ class SetRunDays(SpecialFunction):
         object.__setattr__(self, "run_days", tuple(run_days.items()))
 
     def encode_payload(self) -> bytes:
+        """Encode each File Label followed by its Run Days.
+
+        Returns:
+            The Special Functions Data.
+        """
         return b"".join(
             file_label.encode("ascii") + days.encode() for file_label, days in self.run_days
         )
@@ -370,12 +588,21 @@ class SetRunDays(SpecialFunction):
 
 @dataclass(frozen=True)
 class SetSpeaker(SpecialFunction):
-    """Enable or disable the Sign's speaker ("!", p. 21). Disabled by default."""
+    """Turn the Sign's speaker on or off ("!", p. 21). It is off by default.
+
+    Attributes:
+        enabled: True to turn the speaker on.
+    """
 
     label: ClassVar[str] = "!"
     enabled: bool
 
     def encode_payload(self) -> bytes:
+        """Encode ``00`` to turn the speaker on, or ``FF`` to turn it off.
+
+        Returns:
+            The Special Functions Data.
+        """
         return b"00" if self.enabled else b"FF"
 
 
@@ -384,17 +611,24 @@ FIXED_TONE_PAUSE = 3.0
 
 
 class Tone(Enum):
-    """The Sign's built-in tones ("(", p. 22)."""
+    """The Sign's built-in tones ("(", p. 22).
+
+    Attributes:
+        CONTINUOUS: A continuous tone for about 2 seconds.
+        THREE_BEEPS: Three short beeps, about 2 seconds in all.
+    """
 
     CONTINUOUS = "0"
-    """A continuous tone for about 2 seconds."""
     THREE_BEEPS = "1"
-    """Three short beeps, about 2 seconds in all."""
 
 
 @dataclass(frozen=True)
 class Beep(SpecialFunction):
-    """Sound a built-in tone ("(", p. 22). It must be the last Command in a Packet."""
+    """Sound a built-in tone ("(", p. 22). It must be the last Command in a Packet.
+
+    Attributes:
+        tone: Which tone to play.
+    """
 
     label: ClassVar[str] = "("
     must_be_last: ClassVar[bool] = True
@@ -402,9 +636,15 @@ class Beep(SpecialFunction):
 
     @property
     def pause_after(self) -> float:
+        """Seconds to wait after a built-in tone: 3 (p. 27, note 4)."""
         return FIXED_TONE_PAUSE
 
     def encode_payload(self) -> bytes:
+        """Encode the tone's one-character code.
+
+        Returns:
+            The Special Functions Data.
+        """
         return self.tone.value.encode("ascii")
 
 
@@ -412,8 +652,15 @@ class Beep(SpecialFunction):
 class ProgrammableTone(SpecialFunction):
     """Sound a tone of a given pitch and length ("(" + "2", p. 22).
 
-    ``frequency`` is the speaker setting 0-254 (00H-FEH), ``duration`` is 1-15 tenths of
-    a second, and ``repeats`` is 0-15. It must be the last Command in a Packet.
+    It must be the last Command in a Packet.
+
+    Attributes:
+        frequency: The speaker setting, 0-254 (00H-FEH).
+        duration: The length of one play, 1-15 tenths of a second.
+        repeats: How many times to play it again, 0-15.
+
+    Raises:
+        ValueError: A value is out of range.
     """
 
     label: ClassVar[str] = "("
@@ -432,11 +679,17 @@ class ProgrammableTone(SpecialFunction):
 
     @property
     def pause_after(self) -> float:
+        """Seconds the tone plays, counting the first play and every repeat."""
         # p. 27 note 5: wait until the tone has finished. The manual doesn't say whether
         # "repeated" counts the first play, so assume it doesn't and wait the longer time.
         return self.duration * 0.1 * (self.repeats + 1)
 
     def encode_payload(self) -> bytes:
+        """Encode ``2``, then the frequency, duration, and repeats in hex.
+
+        Returns:
+            The Special Functions Data.
+        """
         return f"2{self.frequency:02X}{self.duration:X}{self.repeats:X}".encode("ascii")
 
 
@@ -460,7 +713,14 @@ class ClearSerialErrorStatus(SpecialFunction):
 
 @dataclass(frozen=True)
 class SetSignAddress(SpecialFunction):
-    """Set the Sign Address ("7", p. 26). A DIP switch address wins after a power cycle."""
+    """Set the Sign Address ("7", p. 26). A DIP switch address wins after a power cycle.
+
+    Attributes:
+        address: The new Sign Address, 0-255.
+
+    Raises:
+        ValueError: ``address`` is not 0-255.
+    """
 
     label: ClassVar[str] = "7"
     address: int
@@ -469,6 +729,11 @@ class SetSignAddress(SpecialFunction):
         check_sign_address(self.address)
 
     def encode_payload(self) -> bytes:
+        """Encode the Sign Address as two hex digits.
+
+        Returns:
+            The Special Functions Data.
+        """
         return f"{self.address:02X}".encode("ascii")
 
 
@@ -478,7 +743,21 @@ STRING_MAX_BYTES = 125
 
 @dataclass(frozen=True, init=False)
 class WriteString(Command):
-    """Write a STRING File (p. 37). Unlike a TEXT File write, the display does not blank."""
+    """Write a STRING File (p. 37). Unlike a TEXT File write, the display does not blank.
+
+    Args:
+        label: The STRING File's File Label.
+        content: Literal text, or a sequence of Segments.
+
+    Attributes:
+        label: The STRING File's File Label.
+        content: The Segments, in order.
+
+    Raises:
+        ValueError: The File Label is invalid, the text is not printable ASCII, a
+            Control Code can't go in a STRING File (Table 19), or the content
+            encodes to more than 125 bytes.
+    """
 
     code: ClassVar[str] = "G"
     label: str
@@ -497,9 +776,19 @@ class WriteString(Command):
             raise ValueError(f"STRING File data is at most {STRING_MAX_BYTES} bytes, got {size}")
 
     def encode_data(self) -> bytes:
+        """Encode the File Label and the content.
+
+        Returns:
+            The Data Field.
+        """
         return self.label.encode("ascii") + encode_content(self.content)
 
     def codes(self) -> Iterable[object]:
+        """List the Control Codes in the content.
+
+        Returns:
+            The Control Codes, in order.
+        """
         return (segment for segment in self.content if not isinstance(segment, str))
 
 
@@ -516,6 +805,13 @@ class WriteDotsPicture(Command):
 
     The picture's height and width must match the File's entry in the Memory
     Configuration (p. 39).
+
+    Attributes:
+        label: The DOTS PICTURE File's File Label.
+        picture: The pixels.
+
+    Raises:
+        ValueError: The File Label is invalid.
     """
 
     code: ClassVar[str] = "I"
@@ -526,6 +822,12 @@ class WriteDotsPicture(Command):
         check_file_label(self.label)
 
     def encode_data(self) -> tuple[bytes | Pause, ...]:
+        """Encode the File Label, Height, Width, and one row of pixel digits per CR.
+
+        Returns:
+            The Data Field in pieces, with the 100 ms Pause the Sign needs after the
+            Width (p. 40).
+        """
         size = f"{self.label}{self.picture.height:02X}{self.picture.width:02X}"
         rows = b"".join(
             "".join(pixel.value for pixel in row).encode("ascii") + b"\r"
@@ -535,9 +837,13 @@ class WriteDotsPicture(Command):
         return (size.encode("ascii"), Pause(DOTS_PICTURE_ROWS_PAUSE), rows)
 
     def requirements(self) -> Iterator[Requirement]:
-        """Table 70: pictures need the Graphic Capability, and note 1 says they must fit
-        the display. Table 69, note 1: an R model shows red only, so other colors need
-        the Color Capability."""
+        """List what the picture needs from a Sign Model.
+
+        Yields:
+            The base Requirements, then the Graphic Capability and a display at
+            least as large as the picture (Table 70, note 1), then the Color
+            Capability for each color other than off and red (Table 69, note 1).
+        """
         yield from super().requirements()
         yield CapabilityRequirement(Capability.GRAPHIC, self)
         yield DisplaySizeRequirement(self.picture.width, self.picture.height, self)
@@ -551,13 +857,17 @@ class Read[T](Command):
 
     The Sign answers with a Response Command whose Command Code is ``response_code``
     and whose data starts with ``response_prefix``, so a Response can be matched to
-    its Read without parsing it.
+    its Read without parsing it. ``Sign.query`` sends a Read and returns what
+    ``parse`` makes of the answer.
+
+    Attributes:
+        response_code: The Command Code of the Response Command that answers this
+            Read.
     """
 
     must_be_last: ClassVar[bool] = True
 
     response_code: ClassVar[str]
-    """The Command Code of the Response Command that answers this Read."""
 
     @property
     def response_prefix(self) -> str:
@@ -565,13 +875,28 @@ class Read[T](Command):
         return ""
 
     def answered_by(self, response: Sequence[ResponseItem]) -> bool:
-        """True if ``response`` holds the answer to this Read."""
+        """Check whether a Response answers this Read.
+
+        Args:
+            response: A decoded Response.
+
+        Returns:
+            True if one of its Commands has ``response_code`` and starts with
+            ``response_prefix``.
+        """
         return any(self._is_answer(item) for item in response)
 
     def answer(self, response: Sequence[ResponseItem]) -> bytes:
-        """The answer's data after ``response_prefix``.
+        """Find this Read's answer in a Response.
 
-        Raises UnexpectedResponseError if ``response`` answers some other Read.
+        Args:
+            response: A decoded Response.
+
+        Returns:
+            The answer's data, after ``response_prefix``.
+
+        Raises:
+            UnexpectedResponseError: The Response answers some other Read.
         """
         for item in response:
             if self._is_answer(item):
@@ -587,12 +912,30 @@ class Read[T](Command):
 
     @abstractmethod
     def parse(self, response: Sequence[ResponseItem]) -> T:
-        """Turn the decoded Response into a value."""
+        """Turn a decoded Response into a value.
+
+        Args:
+            response: A decoded Response that answers this Read.
+
+        Returns:
+            The value the Read asked for.
+
+        Raises:
+            ResponseError: The answer's data is not in the expected format.
+            UnexpectedResponseError: The Response answers some other Read.
+        """
 
 
 @dataclass(frozen=True)
 class ReadText(Read[Message]):
-    """Read a TEXT File back as a Message (p. 19). The Sign answers with a Write TEXT."""
+    """Read a TEXT File back as a Message (p. 19). The Sign answers with a Write TEXT.
+
+    Attributes:
+        label: The TEXT File's File Label.
+
+    Raises:
+        ValueError: The File Label is invalid.
+    """
 
     code: ClassVar[str] = "B"
     response_code: ClassVar[str] = "A"  # Table 46: answered with a Write TEXT
@@ -602,19 +945,43 @@ class ReadText(Read[Message]):
         check_file_label(self.label)
 
     def encode_data(self) -> bytes:
+        """Encode the File Label to read.
+
+        Returns:
+            The Data Field.
+        """
         return self.label.encode("ascii")
 
     @property
     def response_prefix(self) -> str:
+        """The File Label: the answer's data starts with it."""
         return self.label
 
     def parse(self, response: Sequence[ResponseItem]) -> Message:
+        """Decode the TEXT File data in the answer.
+
+        Args:
+            response: A decoded Response that answers this Read.
+
+        Returns:
+            The TEXT File's content.
+
+        Raises:
+            UnexpectedResponseError: The Response answers some other Read.
+        """
         return decode_message(self.answer(response))
 
 
 @dataclass(frozen=True)
 class ReadString(Read[tuple[Segment, ...]]):
-    """Read a STRING File's content (p. 38). The Sign answers with a Write STRING."""
+    """Read a STRING File's content (p. 38). The Sign answers with a Write STRING.
+
+    Attributes:
+        label: The STRING File's File Label.
+
+    Raises:
+        ValueError: The File Label is invalid.
+    """
 
     code: ClassVar[str] = "H"
     response_code: ClassVar[str] = "G"  # Table 59: answered with a Write STRING
@@ -624,19 +991,43 @@ class ReadString(Read[tuple[Segment, ...]]):
         check_file_label(self.label)
 
     def encode_data(self) -> bytes:
+        """Encode the File Label to read.
+
+        Returns:
+            The Data Field.
+        """
         return self.label.encode("ascii")
 
     @property
     def response_prefix(self) -> str:
+        """The File Label: the answer's data starts with it."""
         return self.label
 
     def parse(self, response: Sequence[ResponseItem]) -> tuple[Segment, ...]:
+        """Decode the STRING File data in the answer.
+
+        Args:
+            response: A decoded Response that answers this Read.
+
+        Returns:
+            The STRING File's text and Control Codes, in order.
+
+        Raises:
+            UnexpectedResponseError: The Response answers some other Read.
+        """
         return decode_content(self.answer(response))
 
 
 @dataclass(frozen=True)
 class ReadDotsPicture(Read[DotsPicture]):
-    """Read a SMALL DOTS PICTURE File (Table 23, p. 41). The Sign answers with an "I"."""
+    """Read a SMALL DOTS PICTURE File (Table 23, p. 41). The Sign answers with an "I".
+
+    Attributes:
+        label: The DOTS PICTURE File's File Label.
+
+    Raises:
+        ValueError: The File Label is invalid.
+    """
 
     code: ClassVar[str] = "J"
     response_code: ClassVar[str] = "I"  # p. 41: answered with an "I"
@@ -646,28 +1037,56 @@ class ReadDotsPicture(Read[DotsPicture]):
         check_file_label(self.label)
 
     def encode_data(self) -> bytes:
+        """Encode the File Label to read.
+
+        Returns:
+            The Data Field.
+        """
         return self.label.encode("ascii")
 
     @property
     def response_prefix(self) -> str:
+        """The File Label: the answer's data starts with it."""
         return self.label
 
     def parse(self, response: Sequence[ResponseItem]) -> DotsPicture:
+        """Decode the DOTS PICTURE File data in the answer.
+
+        Args:
+            response: A decoded Response that answers this Read.
+
+        Returns:
+            The picture, at the size the Sign reports.
+
+        Raises:
+            ResponseError: The data is not in the DOTS PICTURE format.
+            UnexpectedResponseError: The Response answers some other Read.
+        """
         return decode_dots_picture(self.answer(response))
 
 
 class ReadSpecial[T](Read[T]):
-    """A Read SPECIAL FUNCTION Command (Table 16, p. 29). The Sign answers with an "E"."""
+    """A Read SPECIAL FUNCTION Command (Table 16, p. 29). The Sign answers with an "E".
+
+    Attributes:
+        label: The one-character Special Function label to read.
+    """
 
     code: ClassVar[str] = "F"
     response_code: ClassVar[str] = "E"  # Table 53: answered with an "E"
     label: ClassVar[str]
 
     def encode_data(self) -> bytes:
+        """Encode the Special Function label to read.
+
+        Returns:
+            The Data Field.
+        """
         return self.label.encode("ascii")
 
     @property
     def response_prefix(self) -> str:
+        """The Special Function label: the answer's data starts with it."""
         return self.label
 
 
@@ -678,26 +1097,58 @@ class ReadDayOfWeek(ReadSpecial[Weekday]):
     label: ClassVar[str] = "&"
 
     def parse(self, response: Sequence[ResponseItem]) -> Weekday:
+        """Decode the day of the week in the answer.
+
+        Args:
+            response: A decoded Response that answers this Read.
+
+        Returns:
+            The Sign's day of the week.
+
+        Raises:
+            UnexpectedResponseError: The Response answers some other Read.
+        """
         return Weekday(self.answer(response).decode("ascii"))
 
 
 @dataclass(frozen=True)
 class SerialErrorStatus:
-    """The Serial Error Status Register (p. 31): errors since it was last cleared."""
+    """The Serial Error Status Register (p. 31): errors since it was last cleared.
+
+    Attributes:
+        illegal_command: The Sign got an illegal Command Code, File Label, or
+            SPECIAL FUNCTION.
+        checksum_error: A Command's Checksum did not match its data.
+        buffer_overflow: The Sign's receive buffer overflowed.
+        timeout: A serial timeout.
+        framing_error: A framing error, usually a baud rate mismatch.
+        parity_error: A parity error. Most Signs don't use it.
+    """
 
     illegal_command: bool = False
-    """An illegal Command Code, File Label, or SPECIAL FUNCTION."""
     checksum_error: bool = False
     buffer_overflow: bool = False
     timeout: bool = False
     framing_error: bool = False
-    """Usually a baud rate mismatch."""
     parity_error: bool = False
-    """Not used on most Signs."""
 
     @classmethod
     def decode(cls, bits: int) -> "SerialErrorStatus":
-        """Decode the register byte (p. 31). Bit 6 is always set; bits 5-0 are errors."""
+        """Decode the register byte (p. 31).
+
+        Args:
+            bits: The byte. Bit 6 is always set; bits 5 to 0 are the errors.
+
+        Returns:
+            The decoded register.
+
+        Examples:
+            >>> from alpha_led_sign.protocol import SerialErrorStatus
+            >>> SerialErrorStatus.decode(0x40).ok
+            True
+            >>> SerialErrorStatus.decode(0x50).checksum_error
+            True
+        """
         return cls(
             illegal_command=bool(bits & 0x20),
             checksum_error=bool(bits & 0x10),
@@ -729,6 +1180,18 @@ class ReadSerialErrorStatus(ReadSpecial[SerialErrorStatus]):
     label: ClassVar[str] = "*"
 
     def parse(self, response: Sequence[ResponseItem]) -> SerialErrorStatus:
+        """Decode the register byte in the answer.
+
+        Args:
+            response: A decoded Response that answers this Read.
+
+        Returns:
+            The Sign's Serial Error Status Register.
+
+        Raises:
+            ResponseError: The answer is not one byte.
+            UnexpectedResponseError: The Response answers some other Read.
+        """
         data = self.answer(response)
         if len(data) != 1:
             raise ResponseError(f"expected one Serial Error Status byte, got {data!r}")
@@ -737,19 +1200,27 @@ class ReadSerialErrorStatus(ReadSpecial[SerialErrorStatus]):
 
 @dataclass(frozen=True)
 class GeneralInformation:
-    """What Read General Information reports (p. 29). Mostly useful for troubleshooting."""
+    """What Read General Information reports (p. 29). Mostly useful for troubleshooting.
+
+    Attributes:
+        firmware: The firmware part number.
+        revision: The firmware revision letter.
+        firmware_date: The release month and two-digit year, as "MMYY".
+        time: The Sign's time of day.
+        time_format: Whether the Sign shows 12-hour or 24-hour time.
+        speaker_enabled: Whether the speaker is on.
+        memory_total: The size of the Memory Pool in bytes.
+        memory_free: The unused part of the Memory Pool in bytes.
+    """
 
     firmware: str
     revision: str
     firmware_date: str
-    """Release month and two-digit year, as "MMYY"."""
     time: time
     time_format: TimeFormat
     speaker_enabled: bool
     memory_total: int
-    """Size of the Memory Pool in bytes."""
     memory_free: int
-    """Unused part of the Memory Pool in bytes."""
 
 
 _GENERAL_INFORMATION_LENGTH = 29  # FFFFFFFF f MmYy HhNn R SS POOL,pool
@@ -762,6 +1233,18 @@ class ReadGeneralInformation(ReadSpecial[GeneralInformation]):
     label: ClassVar[str] = '"'
 
     def parse(self, response: Sequence[ResponseItem]) -> GeneralInformation:
+        """Decode the General Information in the answer.
+
+        Args:
+            response: A decoded Response that answers this Read.
+
+        Returns:
+            What the Sign reports about itself.
+
+        Raises:
+            ResponseError: The answer is not in the format p. 29 gives.
+            UnexpectedResponseError: The Response answers some other Read.
+        """
         data = self.answer(response)
         if data.startswith(b"\x00"):  # p. 29 note 1: only some Signs send it
             data = data[1:]
@@ -782,7 +1265,13 @@ class ReadGeneralInformation(ReadSpecial[GeneralInformation]):
 
 @dataclass(frozen=True)
 class NetworkQueryResponse:
-    """One Sign's answer to a Network Query (p. 32)."""
+    """One Sign's answer to a Network Query (p. 32).
+
+    Attributes:
+        sign_type: The Sign's Sign Type.
+        address: The Sign's Sign Address.
+        errors: The Sign's Serial Error Status Register.
+    """
 
     sign_type: str
     address: int
@@ -800,6 +1289,18 @@ class NetworkQuery(ReadSpecial[NetworkQueryResponse]):
     label: ClassVar[str] = "-"
 
     def parse(self, response: Sequence[ResponseItem]) -> NetworkQueryResponse:
+        """Decode one Sign's answer.
+
+        Args:
+            response: A decoded Response that answers this Read.
+
+        Returns:
+            The Sign's Sign Type, Sign Address, and serial errors.
+
+        Raises:
+            ResponseError: The answer is not 4 bytes, or its Sign Address is not hex.
+            UnexpectedResponseError: The Response answers some other Read.
+        """
         data = self.answer(response)
         if len(data) != 4:
             raise ResponseError(f"expected a 4-byte Network Query answer, got {data!r}")

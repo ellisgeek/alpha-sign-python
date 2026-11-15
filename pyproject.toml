@@ -27,6 +27,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/ellisgeek/alpha-sign-python"
+Documentation = "https://ellisgeek.github.io/alpha-sign-python/"
 Repository = "https://github.com/ellisgeek/alpha-sign-python"
 Issues = "https://github.com/ellisgeek/alpha-sign-python/issues"
 Changelog = "https://github.com/ellisgeek/alpha-sign-python/blob/main/CHANGELOG.md"
@@ -45,6 +46,10 @@ dev = [
     "ty>=0.0.99",
     "types-pyserial>=3.5.0.20261104",
 ]
+docs = [
+    "great-docs>=0.17.0",
+    "quarto-cli>=1.11.9",
+]
 
 [tool.ruff]
 line-length = 100
@@ -53,6 +58,20 @@ extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "PT", "N", "C4", "PIE", "RET", "TC"]
+# The library's docstrings are Google style and its signatures are fully typed: the API
+# reference (great-docs.yml) is built from them. DOC (Returns, Yields, and Raises
+# sections that match the code) is a preview rule set, enabled on its own here.
+extend-select = ["D", "ANN", "DOC201", "DOC202", "DOC402", "DOC403", "DOC501"]
+preview = true
+explicit-preview-rules = true
+# A class's docstring documents its constructor (Args) and dunder methods.
+ignore = ["D105", "D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"!src/**" = ["D", "ANN", "DOC"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -61,8 +80,8 @@ docstring-code-format = true
 python-version = "3.12"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = ["--strict-markers", "-m", "not hardware"]
+testpaths = ["tests", "src"]
+addopts = ["--strict-markers", "-m", "not hardware", "--doctest-modules"]
 markers = [
     "hardware: needs a real sign; set ALPHA_SIGN_PORT and run with -m hardware",
     "emulator: runs the hardware tests against the emulator; needs Node and npm ci in emulator/",

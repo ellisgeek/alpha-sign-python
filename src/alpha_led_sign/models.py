@@ -1,6 +1,18 @@
 """Sign Models: what each product is and which Capabilities it has.
 
-A Sign Model is data. Adding a model means adding one entry here.
+A Sign Model is data, not a subclass. Pass one to ``Sign`` so that it addresses the
+right Sign Type and checks content against the model's Capabilities:
+
+```python
+from alpha_led_sign import Sign, models
+
+sign = Sign.serial("/dev/ttyUSB0", model=models.ALPHA_4120C)
+```
+
+The profiles come from the manual's Tables 68-70, corrected by hardware results
+where a real Sign disagreed. ``GENERIC`` works with any Alpha Sign. To describe a
+Sign that has no profile, build a ``SignModel`` or copy one with
+``dataclasses.replace``.
 """
 
 import json
@@ -88,10 +100,13 @@ _COLUMNS = {
 
 
 def _load_matrices() -> dict[str, frozenset[Capability]]:
-    """Read Tables 68-70 into {matrix row name: Capabilities}.
+    """Read Tables 68-70 from the packaged JSON.
 
     A cell with a footnote (such as "1") counts as supported; the footnotes only
     qualify how.
+
+    Returns:
+        The Capabilities of each matrix row, keyed by the row name.
     """
     text = resources.files("alpha_led_sign").joinpath("capability-matrices.json").read_text()
     rows: dict[str, set[Capability]] = {}
@@ -106,18 +121,77 @@ def _load_matrices() -> dict[str, frozenset[Capability]]:
 
 
 MATRIX_ROWS = _load_matrices()
-"""Capabilities per row of Tables 68-70, keyed by the row name the manual uses."""
+"""Capabilities for each row of Tables 68-70, keyed by the row name the manual uses."""
+
+__all__ = [
+    "ALPHA_4080C",
+    "ALPHA_4120C",
+    "ALPHA_4120R",
+    "ALPHA_4160C",
+    "ALPHA_4160R",
+    "ALPHA_4200C",
+    "ALPHA_4200R",
+    "ALPHA_4240C",
+    "ALPHA_4240R",
+    "BETABRITE",
+    "GENERIC",
+    "MATRIX_ROWS",
+    "REGISTRY",
+    "SignModel",
+    "UnsupportedCapability",
+    "UnsupportedCapabilityWarning",
+    "by_sign_type",
+    "get",
+    "validate",
+]
 
 _EZ_KEY_II_AND_ALPHA_1 = frozenset({ProtocolVersion.EZ_KEY_II, ProtocolVersion.ALPHA_1_0})
 
 
 @dataclass(frozen=True)
 class SignModel:
-    """A product such as the 4120C. ``None`` means the value is unknown."""
+    """A product such as the 4120C: what it is and what it can show.
+
+    A field of ``None`` means the value is unknown, and the checks that need it are
+    skipped.
+
+    Attributes:
+        name: The model's name, such as ``"4120C"``. ``models.get`` looks it up.
+        sign_type: The one-character Sign Type that addresses this model (Table 5,
+            p. 10).
+        series: The Series the manual groups it in, such as ``"4000 Series"``.
+        columns: Display width in pixels.
+        rows: Display height in pixels.
+        lines: Lines of text the display shows in a 7-row font.
+        memory_bytes: Size of the Memory Pool in bytes.
+        max_messages: The most TEXT Files the model holds.
+        protocol_versions: The Protocol Versions the model accepts (Table 3, p. 8).
+        capabilities: What the model can show. ``None`` means unknown, so content is
+            not checked against Capabilities.
+        file_overhead: Bytes of memory each File in a Memory Configuration uses
+            besides its size (p. 27, note 1). The readerboard project
+            (https://github.com/mjaksn/readerboard) reports 13, but a 4120C measured
+            11 (docs/hardware-results.md).
+        memory_reserved: Bytes of the Memory Pool a Memory Configuration can't use.
+            The manual names none; a 4120C keeps 9 (docs/hardware-results.md).
+        dots_picture_planes: How a DOTS PICTURE File's size counts toward memory.
+            ``None`` leaves it out, as p. 27, note 1 says. Otherwise the picture
+            uses 2 + rows x planes x ceil(columns / 8) bytes besides its overhead,
+            whatever its color depth: a 4120C measured 2 planes
+            (docs/hardware-results.md).
+
+    Examples:
+        A model without a profile, built from a near one:
+
+        >>> import dataclasses
+        >>> from alpha_led_sign import models
+        >>> mine = dataclasses.replace(models.ALPHA_4120C, name="4120C (mine)", sign_type="a")
+        >>> mine.columns, mine.lines
+        (120, 2)
+    """
 
     name: str
     sign_type: str
-    """Table 5, p. 10."""
     series: str | None
     columns: int | None
     rows: int | None
@@ -125,29 +199,50 @@ class SignModel:
     memory_bytes: int | None
     max_messages: int | None
     protocol_versions: frozenset[ProtocolVersion]
-    """Table 3, p. 8."""
     capabilities: frozenset[Capability] | None
-    """``None`` means unknown: no Capability checks for this model."""
     file_overhead: int = 11
-    """Bytes of memory each File in a Memory Configuration uses besides its size (p. 27,
-    note 1). The readerboard project (https://github.com/mjaksn/readerboard) reports
-    13, but a 4120C measured 11 (docs/hardware-results.md)."""
     memory_reserved: int = 0
-    """Bytes of the Memory Pool a Memory Configuration can't use. The manual names none;
-    a 4120C keeps 9 (docs/hardware-results.md)."""
     dots_picture_planes: int | None = None
-    """How a DOTS PICTURE File's size counts toward memory. ``None`` leaves it out, as
-    p. 27, note 1 says. Otherwise the picture uses 2 + rows x planes x ceil(columns / 8)
-    bytes besides its overhead, whatever its color depth: a 4120C measured 2 planes
-    (docs/hardware-results.md)."""
 
     def can_show(self, code: object) -> bool:
-        """Whether this model meets every Requirement of ``code`` (a Mode, Display
-        Position, or Control Code), by the rules ``validate`` uses."""
+        """Check whether this model can show one code as written.
+
+        The rules are the ones ``validate`` uses. A requirement whose facts are
+        unknown for this model counts as met.
+
+        Args:
+            code: A Mode, Special Mode, Special Graphic, Display Position, or
+                Control Code.
+
+        Returns:
+            True if the model meets every Requirement of ``code``.
+
+        Examples:
+            >>> from alpha_led_sign import Color, Mode, models
+            >>> models.ALPHA_4120C.can_show(Color.GREEN)
+            True
+            >>> models.ALPHA_4120R.can_show(Color.GREEN)
+            False
+            >>> models.ALPHA_4120C.can_show(Mode.EXPLODE)
+            False
+        """
         return all(_problem(self, requirement) is None for requirement in requires(code))
 
     def memory_needed(self, files: Sequence[MemoryFile]) -> int:
-        """Bytes of the Memory Pool a Memory Configuration of ``files`` needs."""
+        """Count the bytes a Memory Configuration of ``files`` needs on this model.
+
+        Args:
+            files: The Files of the Memory Configuration.
+
+        Returns:
+            Bytes of the Memory Pool used: the reserved bytes, plus each File's size
+            and overhead.
+
+        Examples:
+            >>> from alpha_led_sign import StringFile, TextFile, models
+            >>> models.ALPHA_4120C.memory_needed([TextFile("A", 100), StringFile("T", 16)])
+            147
+        """
         needed = self.memory_reserved
         for file in files:
             needed += self.file_overhead
@@ -192,19 +287,29 @@ def _series_4000(
 
 
 ALPHA_4080C = _series_4000("4080C", "t", 80)
+"""4080C: 80 x 16 pixels, tricolor, Sign Type ``t``."""
 # A 4120C (firmware 10184403 rev O) reported 28,872 bytes, not the brochure's 28,000,
 # kept 9 of them back, and counted DOTS PICTURE sizes (docs/hardware-results.md). The
 # Sign wins.
 ALPHA_4120C = _series_4000(
     "4120C", "a", 120, memory_bytes=28_872, memory_reserved=9, dots_picture_planes=2
 )
+"""4120C: 120 x 16 pixels, tricolor, Sign Type ``a``. Its memory figures were measured
+on a real Sign (docs/hardware-results.md)."""
 ALPHA_4120R = _series_4000("4120R", "g", 120)
+"""4120R: 120 x 16 pixels, red only, Sign Type ``g``."""
 ALPHA_4160C = _series_4000("4160C", "b", 160)
+"""4160C: 160 x 16 pixels, tricolor, Sign Type ``b``."""
 ALPHA_4160R = _series_4000("4160R", "h", 160)
+"""4160R: 160 x 16 pixels, red only, Sign Type ``h``."""
 ALPHA_4200C = _series_4000("4200C", "c", 200)
+"""4200C: 200 x 16 pixels, tricolor, Sign Type ``c``."""
 ALPHA_4200R = _series_4000("4200R", "i", 200)
+"""4200R: 200 x 16 pixels, red only, Sign Type ``i``."""
 ALPHA_4240C = _series_4000("4240C", "d", 240)
+"""4240C: 240 x 16 pixels, tricolor, Sign Type ``d``."""
 ALPHA_4240R = _series_4000("4240R", "j", 240)
+"""4240R: 240 x 16 pixels, red only, Sign Type ``j``."""
 
 BETABRITE = SignModel(
     name="BetaBrite",
@@ -218,6 +323,7 @@ BETABRITE = SignModel(
     protocol_versions=_EZ_KEY_II_AND_ALPHA_1,
     capabilities=MATRIX_ROWS["BetaBrite"],
 )
+"""BetaBrite: one line, Sign Type ``^``. Its size and memory are unknown."""
 
 GENERIC = SignModel(
     name="Generic",
@@ -249,10 +355,26 @@ REGISTRY: dict[str, SignModel] = {
         GENERIC,
     )
 }
+"""Every Sign Model profile, keyed by name."""
 
 
 def get(name: str) -> SignModel:
-    """Look up a Sign Model by name, such as ``"4120C"``."""
+    """Look up a Sign Model by name.
+
+    Args:
+        name: The model's name, such as ``"4120C"``.
+
+    Returns:
+        The registered Sign Model.
+
+    Raises:
+        KeyError: No model has that name. The message lists the known names.
+
+    Examples:
+        >>> from alpha_led_sign import models
+        >>> models.get("4120C").sign_type
+        'a'
+    """
     try:
         return REGISTRY[name]
     except KeyError:
@@ -260,25 +382,61 @@ def get(name: str) -> SignModel:
 
 
 def by_sign_type(sign_type: str) -> SignModel | None:
-    """The registered Sign Model with this Sign Type, or None unless exactly one has it."""
+    """Find the registered Sign Model with a Sign Type.
+
+    Args:
+        sign_type: A one-character Sign Type, such as one ``discover`` reports.
+
+    Returns:
+        The model, or None when no model or more than one model has that Sign Type.
+
+    Examples:
+        >>> from alpha_led_sign import models
+        >>> models.by_sign_type("a").name
+        '4120C'
+    """
     matches = [model for model in REGISTRY.values() if model.sign_type == sign_type]
     return matches[0] if len(matches) == 1 else None
 
 
 class UnsupportedCapability(Exception):  # noqa: N818 (public name, docs/spec.md)
-    """Raised by strict validation when a Sign Model lacks something a Command uses."""
+    """A Sign Model lacks something a Command uses, and validation is strict.
+
+    Raised before anything is sent. The message lists every problem found, separated
+    by semicolons. Problems include a missing Capability or Protocol Version, a
+    picture larger than the display, a Memory Configuration larger than memory, and a
+    tall font in a Display Position that shows it 7 rows high.
+    """
 
 
 class UnsupportedCapabilityWarning(UserWarning):
-    """Warned by advisory validation when a Sign Model lacks something a Command uses."""
+    """A Sign Model lacks something a Command uses, and validation is advisory.
+
+    Warned once for each problem; the Packet is still sent. Turn the warnings into
+    errors with ``Sign(..., strict=True)``, or silence them with the ``warnings``
+    module.
+    """
 
 
 def validate(model: SignModel, commands: Sequence[Command], *, strict: bool = False) -> None:
-    """Check ``commands`` against what ``model`` supports.
+    """Check Commands against what a Sign Model supports.
 
-    Strict validation raises UnsupportedCapability listing every problem. Advisory
-    validation (the default) warns once per problem, because the manual's tables
-    have gaps and the Sign may well accept the Command anyway.
+    ``Sign.send`` calls this before every send. Advisory validation (the default)
+    only warns, because the manual's tables have gaps and the Sign may accept the
+    Command anyway.
+
+    Args:
+        model: The Sign Model to check against.
+        commands: The Commands to check.
+        strict: Raise instead of warning.
+
+    Raises:
+        UnsupportedCapability: ``strict`` is True and there is at least one problem.
+            The message lists them all.
+
+    Warns:
+        UnsupportedCapabilityWarning: Once for each problem, when ``strict`` is
+            False.
     """
     problems = [problem for command in commands for problem in _problems(model, command)]
     if strict and problems:
@@ -299,7 +457,11 @@ _SEVEN_HIGH_POSITIONS = frozenset({Position.TOP, Position.BOTTOM, Position.FILL}
 
 
 def _problem(model: SignModel, requirement: Requirement) -> str | None:
-    """Why ``model`` can't meet ``requirement``, or None if it can or the facts are unknown."""
+    """Explain why ``model`` can't meet ``requirement``.
+
+    Returns:
+        The reason, or None if the model meets it or the facts are unknown.
+    """
     match requirement:
         case VersionRequirement(version, source):
             if version <= max(model.protocol_versions):

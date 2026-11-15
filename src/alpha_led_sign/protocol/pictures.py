@@ -8,7 +8,12 @@ from alpha_led_sign.protocol.responses import ResponseError
 
 
 class PixelColor(Enum):
-    """One pixel of a SMALL DOTS PICTURE, as its Row Bit Pattern character (p. 40)."""
+    """One pixel of a SMALL DOTS PICTURE, as its Row Bit Pattern character (p. 40).
+
+    The value is the digit ``DotsPicture.parse`` reads: ``0`` is off, ``1`` is red,
+    and so on in the order the members are listed. A red-only model shows only
+    ``OFF`` and ``RED``.
+    """
 
     OFF = "0"
     RED = "1"
@@ -30,7 +35,15 @@ MAX_WIDTH = 255
 
 @dataclass(frozen=True)
 class DotsPicture:
-    """The pixels of a SMALL DOTS PICTURE: rows from top to bottom, each left to right."""
+    """The pixels of a SMALL DOTS PICTURE: rows from top to bottom, each left to right.
+
+    Attributes:
+        rows: The rows, each a tuple of pixels. Every row is as wide.
+
+    Raises:
+        ValueError: There are more than 31 rows or 255 columns, the rows differ in
+            width, or a pixel is not a PixelColor.
+    """
 
     rows: tuple[tuple[PixelColor, ...], ...]
 
@@ -53,15 +66,35 @@ class DotsPicture:
 
     @classmethod
     def parse(cls, text: str) -> "DotsPicture":
-        """Build a picture from one line per row, in the manual's digits ("0" off, "1" red...)."""
+        r"""Build a picture from text, one line per row, in the manual's pixel digits.
+
+        Args:
+            text: One line for each row. Each character is a PixelColor digit:
+                ``0`` off, ``1`` red, ``2`` green, ``3`` amber, and so on (p. 40).
+
+        Returns:
+            The picture.
+
+        Raises:
+            ValueError: A character is not a pixel digit, the rows differ in width,
+                or the picture is too large.
+
+        Examples:
+            >>> from alpha_led_sign import DotsPicture
+            >>> arrow = DotsPicture.parse("010\n111\n010")
+            >>> arrow.width, arrow.height
+            (3, 3)
+        """
         return cls(tuple(tuple(PixelColor(char) for char in line) for line in text.splitlines()))
 
     @property
     def height(self) -> int:
+        """The number of rows."""
         return len(self.rows)
 
     @property
     def width(self) -> int:
+        """The number of columns. 0 for a picture with no rows."""
         return len(self.rows[0]) if self.rows else 0
 
 
@@ -71,9 +104,19 @@ _SIZE = re.compile(rb"[0-9A-Fa-f]{4}")
 def decode_dots_picture(data: bytes) -> DotsPicture:
     """Decode DOTS PICTURE File Data (Height, Width, rows; Table 22) as the Sign reads it.
 
-    LF is ignored and the last CR is optional. A short row is padded with off pixels and a
-    long one is cut at the Width (p. 40). Rows never sent are off, because the Sign clears
-    the picture once it has the Width.
+    LF is ignored and the last CR is optional. A short row is padded with off pixels
+    and a long one is cut at the Width (p. 40). Rows never sent are off, because the
+    Sign clears the picture once it has the Width.
+
+    Args:
+        data: The File Data.
+
+    Returns:
+        The picture.
+
+    Raises:
+        ResponseError: The data does not start with a hex Height and Width, a pixel
+            is not a digit, or the picture is too large.
     """
     if not _SIZE.fullmatch(data[:4]):
         raise ResponseError(f"DOTS PICTURE data must start with a hex Height and Width: {data!r}")

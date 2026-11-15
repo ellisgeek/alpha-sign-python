@@ -1,0 +1,111 @@
+---
+title: Reading back and discovery
+---
+
+## Reads need one Sign
+
+Every Sign that matches a Packet's Sign Type and Sign Address acts on it. For a
+write that is harmless; for a read, every matching Sign answers at once and the
+answers collide. So a read to Sign Address 0 (the default) or to a `?` pattern
+raises `ValueError`, and nothing is sent.
+
+Give the `Sign` the Sign's own address:
+
+```python
+sign = Sign.serial("/dev/ttyUSB0", model=models.ALPHA_4120C, address=1)
+```
+
+If only one Sign is on the line, you can keep address 0 and allow reads anyway:
+
+```python
+sign = Sign.serial("/dev/ttyUSB0", broadcast_reads=True)
+```
+
+## What you can read
+
+```python
+sign.read_text("A")             # Message
+sign.read_string("T")           # tuple of Segments
+sign.read_dots_picture("P")     # DotsPicture
+sign.info()                     # GeneralInformation
+sign.serial_errors()            # SerialErrorStatus
+```
+
+The display pauses while the Sign answers a read.
+
+`info()` reports the firmware part number, revision, and date, the Sign's clock and
+time format, whether the speaker is on, and the total and free memory:
+
+```python
+info = sign.info()
+print(info.firmware, info.revision, info.memory_free, "of", info.memory_total)
+```
+
+On a 4120C the free figure is the room left in the first TEXT File, less 5 bytes,
+so it does not always match what the Memory Configuration leaves free.
+
+## Did the data arrive?
+
+The Sign records serial errors: a bad Checksum, a buffer overflow, a framing error
+(usually a baud rate mismatch), and an illegal Command or File Label.
+`serial_errors()` reads the record and resets it, so each read covers what was sent
+since the one before:
+
+```python
+sign.write_string("T", "72F")
+status = sign.serial_errors()
+if not status.ok:
+    print(status)
+```
+
+A 4120C sets the overflow bit when a TEXT File write is longer than the File, and
+the illegal command bit when a STRING File write is longer than the File.
+
+## Timeouts and late answers
+
+A read waits `read_timeout` seconds (2 by default) for each part of the answer, and
+raises `SignTimeoutError` if nothing comes. The usual causes are a wrong Sign
+Address or Sign Type, the wrong line settings, or a cable that carries data only
+toward the Sign.
+
+If an answer arrives after its read timed out, the next read skips it. A late
+answer to the same kind of read can't be told apart from the real one, which is
+one more reason to give each Sign its own address.
+
+A damaged answer raises `ResponseError`, a `ValueError`.
+
+## Find the Signs on a line
+
+`discover` asks every Sign on the line for its Sign Type and Sign Address. It takes
+a Transport rather than a `Sign`, because it reaches every Sign Type:
+
+```python
+from alpha_led_sign import SerialTransport, discover
+
+with SerialTransport("/dev/ttyUSB0") as line:
+    for found in discover(line, max_address=15):
+        print(found.address, found.sign_type, found.model)
+```
+
+`found.model` is the Sign Model with that Sign Type, when exactly one has it.
+
+Each Sign answers in turn, 1 s + 0.5 s × its address after the query, so discovery
+waits for the highest address you ask about, plus 1 s. All 255 addresses
+take over two minutes; `max_address=15` takes about 9.5 s. A Sign ignores other
+Commands until it has answered.
+
+Two Signs that share an address garble each other's answers. Discovery skips a
+garbled answer with a warning.
+
+## Give a Sign its own address
+
+```python
+sign = Sign.serial("/dev/ttyUSB0", model=models.ALPHA_4120C)   # address 0
+sign.set_sign_address(1, broadcast=True)
+```
+
+Sent to address 0, this reaches every matching Sign on the line and gives them all
+the same address, so the library refuses unless you pass `broadcast=True`. Do it
+with one Sign connected. Afterwards the `Sign` object sends to the new address.
+
+A Sign Address set with DIP switches takes over again after a power cycle.

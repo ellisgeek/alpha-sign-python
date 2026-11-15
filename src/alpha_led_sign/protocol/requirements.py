@@ -15,7 +15,12 @@ from alpha_led_sign.protocol.versions import ProtocolVersion
 
 @dataclass(frozen=True)
 class VersionRequirement:
-    """``source`` needs a Sign that accepts ``version`` or later."""
+    """A Command or code needs a Sign that accepts a Protocol Version or a later one.
+
+    Attributes:
+        version: The earliest Protocol Version that will do.
+        source: The Command or code that needs it.
+    """
 
     version: ProtocolVersion
     source: object
@@ -23,7 +28,12 @@ class VersionRequirement:
 
 @dataclass(frozen=True)
 class CapabilityRequirement:
-    """``source`` needs a Sign Model with ``capability``."""
+    """A Command or code needs a Sign Model with a Capability.
+
+    Attributes:
+        capability: The Capability.
+        source: The Command or code that needs it.
+    """
 
     capability: Capability
     source: object
@@ -31,7 +41,13 @@ class CapabilityRequirement:
 
 @dataclass(frozen=True)
 class DisplaySizeRequirement:
-    """``source`` must fit a display ``columns`` x ``rows`` pixels (Table 70, note 1)."""
+    """A Command needs a display at least this large (Table 70, note 1).
+
+    Attributes:
+        columns: The width needed, in pixels.
+        rows: The height needed, in pixels.
+        source: The Command that needs it.
+    """
 
     columns: int
     rows: int
@@ -40,17 +56,25 @@ class DisplaySizeRequirement:
 
 @dataclass(frozen=True)
 class MemoryRequirement:
-    """A Memory Configuration of ``files`` must fit the Sign's memory (p. 27, note 1)."""
+    """A Memory Configuration must fit the Sign's memory (p. 27, note 1).
+
+    Attributes:
+        files: The Files of the Memory Configuration.
+    """
 
     files: tuple[MemoryFile, ...]
 
 
 @dataclass(frozen=True)
 class FontPositionRequirement:
-    """``font``, taller than 7 rows, is shown in Display Position ``position``.
+    """A font taller than 7 rows is shown in a Display Position.
 
-    A two-line Sign "will 'size down'" such a font outside the Middle position (p. 96,
-    7.10.3.2.5), so the Sign Model decides whether it shows as written.
+    A two-line Sign "will 'size down'" such a font outside the Middle position
+    (p. 96, 7.10.3.2.5), so the Sign Model decides whether it shows as written.
+
+    Attributes:
+        font: The tall font.
+        position: The Display Position of its Frame.
     """
 
     font: Font
@@ -72,10 +96,22 @@ TALL_FONTS = frozenset({Font.TEN_HIGH, Font.FULL_HEIGHT, Font.FULL_HEIGHT_FANCY}
 
 
 def requires(code: object) -> tuple[Requirement, ...]:
-    """What ``code`` (a Mode, Display Position, or Control Code) needs from a Sign Model.
+    """List what a code needs from a Sign Model.
 
     Codes the manual does not mark with a version work with every version, so they
-    have no VersionRequirement; codes every Sign has have no CapabilityRequirement.
+    have no VersionRequirement. Codes every Sign has have no CapabilityRequirement.
+
+    Args:
+        code: A Mode, Special Mode, Special Graphic, Display Position, or Control
+            Code.
+
+    Returns:
+        The Requirements, possibly none.
+
+    Examples:
+        >>> from alpha_led_sign.protocol import Mode, requires
+        >>> [type(found).__name__ for found in requires(Mode.EXPLODE)]
+        ['VersionRequirement', 'CapabilityRequirement']
     """
     found: list[Requirement] = []
     version = _MIN_VERSIONS.get(code, ProtocolVersion.EZ_KEY_II)

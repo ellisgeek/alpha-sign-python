@@ -1,0 +1,78 @@
+---
+title: Errors and troubleshooting
+---
+
+## Errors
+
+| Error | When |
+|---|---|
+| `ValueError` | A value breaks a rule of the protocol, true for every Sign: a bad File Label or Sign Address, a size or Run Time out of range, text that is not printable ASCII, STRING File content that is too long or holds a Control Code it can't. Raised when the value is built, before anything is sent. |
+| `MarkupError` | Markup can't be read. A `ValueError`; `.position` is the offset of the problem. |
+| `UnsupportedCapability` | With `strict=True`: the Sign Model lacks something the content uses, or a Memory Configuration is too big for it. Nothing is sent. |
+| `UnsupportedCapabilityWarning` | The same problems without `strict`. The Packet is sent anyway. |
+| `SignTimeoutError` | A read got no complete answer within `read_timeout`. A `TimeoutError`. |
+| `ResponseError` | An answer is damaged, fails its Checksum, or can't be parsed. A `ValueError`. |
+| `UnexpectedResponseError` | An answer belongs to a different read, and no other read is waiting for one. A `ResponseError`. |
+
+Errors from the serial port itself, such as a port that can't be opened, are
+pyserial's `serial.SerialException`. The library does not retry or reconnect.
+
+## Common problems
+
+### Nothing changes on the display
+
+Check, in order:
+
+1. The line settings: 9600 baud, 8N1 unless the Sign is set otherwise.
+2. The Sign Type. A `model` addresses only that Sign Type; try `models.GENERIC`,
+   which reaches every Sign.
+3. The Sign Address. Address 0 reaches every Sign; another address reaches only the
+   Sign set to it. `discover` lists the Signs and their addresses.
+4. `sign.serial_errors()`, if reads work: a framing error usually means the baud
+   rate is wrong.
+
+### Reads raise `ValueError` about Sign Address 0
+
+Reads need one Sign. Set
+`address=` to the Sign's address, or pass `broadcast_reads=True` when it is the only
+Sign on the line. See [Reading back and discovery](07-reading-and-discovery.qmd).
+
+### Reads time out, but writes work
+
+The Sign may not be the address you gave, or
+the cable may not carry data back from the Sign.
+
+### My Files are gone
+
+`configure_memory` and `clear_memory` erase every File.
+
+### A STRING File went blank
+
+On a 4120C, a write longer than the File's size
+empties it. Make the File bigger in the Memory Configuration.
+
+### The end of a TEXT File's Message is missing
+
+The Message is longer than the
+File. A 4120C keeps what fits and records a buffer overflow.
+
+### A big font shows small
+
+On a two-line Sign, fonts taller than 7 rows show at
+full height only in `Position.MIDDLE`.
+
+### `beep` or `tone` makes no sound
+
+The speaker is off at power-up; call
+`sign.set_speaker(True)`.
+
+### The time or date is wrong
+
+The Sign shows its own clock. Set it with
+`sign.set_clock(datetime.now())`.
+
+### The library warns about content that works
+
+The manual's tables have gaps.
+Filter `UnsupportedCapabilityWarning`, or copy the profile and add the Capability
+(see [Sign Models and validation](08-sign-models.qmd)), and please report it.

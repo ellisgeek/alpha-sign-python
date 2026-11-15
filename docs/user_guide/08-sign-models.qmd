@@ -1,0 +1,112 @@
+---
+title: Sign Models and validation
+---
+
+A **Sign Model** is a record of one product: its Sign Type, display size, memory,
+the Protocol Versions it accepts, and its Capabilities (the Modes, fonts, colors,
+and other features it has). The Capabilities come from the tables in Alpha's
+protocol manual, corrected where a real Sign disagreed.
+
+## The profiles
+
+| Profile | Sign Type | Display | Colors |
+|---|---|---|---|
+| `models.ALPHA_4080C` | `t` | 80 × 16 | tricolor |
+| `models.ALPHA_4120C` | `a` | 120 × 16 | tricolor |
+| `models.ALPHA_4120R` | `g` | 120 × 16 | red only |
+| `models.ALPHA_4160C` | `b` | 160 × 16 | tricolor |
+| `models.ALPHA_4160R` | `h` | 160 × 16 | red only |
+| `models.ALPHA_4200C` | `c` | 200 × 16 | tricolor |
+| `models.ALPHA_4200R` | `i` | 200 × 16 | red only |
+| `models.ALPHA_4240C` | `d` | 240 × 16 | tricolor |
+| `models.ALPHA_4240R` | `j` | 240 × 16 | red only |
+| `models.BETABRITE` | `^` | one line, size unknown | color |
+| `models.GENERIC` | `Z` (all Signs) | unknown | unknown |
+
+The 4000 Series profiles have two lines and accept EZ KEY II and Alpha 1.0. Only
+the 4120C has been tested on hardware; its memory figures are measured.
+`models.get("4120C")` looks a profile up by name.
+
+`models.GENERIC` is the default. It addresses every Alpha Sign, has no
+Capabilities to check, and checks only that a Command is in Alpha 1.0.
+
+## Validation
+
+Before every send, the `Sign` checks the Commands against its Sign Model:
+
+- a Mode, font, color, or other Control Code the model lacks;
+- a Command or code from a later Protocol Version;
+- a Memory Configuration larger than the model's memory;
+- a picture larger than the display, or in colors a red-only model lacks;
+- a font taller than 7 rows outside `Position.MIDDLE` on a two-line Sign, which
+  the Sign draws 7 rows high.
+
+By default each problem is an `UnsupportedCapabilityWarning`, and the Packet is
+sent anyway. The manual's tables have gaps, and a Sign may accept what its table
+leaves out.
+
+With `strict=True`, the first send that has a problem raises
+`UnsupportedCapability`, listing every problem, and sends nothing:
+
+```python
+sign = Sign.serial("/dev/ttyUSB0", model=models.ALPHA_4120R, strict=True)
+sign.show("{color green}Go")
+# UnsupportedCapability: 4120R does not support color (Color.GREEN)
+```
+
+The tall-font check is about how content looks, not about what the Sign accepts,
+but strict mode raises on it too.
+
+To silence the warnings, filter them:
+
+```python
+import warnings
+
+from alpha_led_sign import UnsupportedCapabilityWarning
+
+warnings.simplefilter("ignore", UnsupportedCapabilityWarning)
+```
+
+## Ask before you send
+
+`SignModel.can_show` answers for one code, by the same rules:
+
+```python
+from alpha_led_sign import Color, Mode, SpecialGraphic
+
+models.ALPHA_4120C.can_show(Mode.EXPLODE)              # False: Alpha 3.0
+models.ALPHA_4120R.can_show(Color.GREEN)               # False: red only
+models.ALPHA_4120C.can_show(SpecialGraphic.FIREWORKS)  # True
+```
+
+This is how a program can pick content that suits whatever Sign it finds, as the
+`examples/vegas_mode.py` script does.
+
+## A Sign with no profile
+
+A Sign Model is a frozen dataclass, so a new one is one expression. Copy the
+nearest profile and change what differs:
+
+```python
+import dataclasses
+
+my_sign = dataclasses.replace(models.ALPHA_4120C, name="4120C (shop)", memory_bytes=32_768)
+```
+
+Or build one from scratch. A field of `None` means unknown, and the checks that
+need it are skipped; `capabilities=None` turns Capability checks off:
+
+```python
+from alpha_led_sign import SignModel
+from alpha_led_sign.protocol import ProtocolVersion
+
+mystery = SignModel(
+    name="Mystery", sign_type="Z", series=None, columns=None, rows=None,
+    lines=None, memory_bytes=None, max_messages=None,
+    protocol_versions=frozenset({ProtocolVersion.ALPHA_1_0}), capabilities=None,
+)
+```
+
+If a real Sign disagrees with its profile, please
+[open an issue](https://github.com/ellisgeek/alpha-sign-python/issues) with what it
+did.

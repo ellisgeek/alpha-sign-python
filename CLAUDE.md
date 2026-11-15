@@ -1,51 +1,54 @@
 # CLAUDE.md
 
 A typed Python library that controls Alpha-protocol LED signs over serial. The
-first target is the 4120C, but nothing may be specific to one Sign Model. Read
-`GLOSSARY.md` for the domain terms, `docs/spec.md` for the design, the test
-seams, and the work still open, and `docs/adr/` for decisions.
-`CONTRIBUTING.md` covers setup, the git workflow, and where the manuals come
-from.
+first target is the 4120C.
 
-Architecture: `alpha_led_sign.protocol` is pure (bytes in, bytes out, no I/O, no
-clocks, no sleeps). Required pauses are returned as data on the `Packet`'s
-chunks and the sender sleeps. A Sign Model is data, not a subclass.
+Read before you work:
 
-Tests: test-first, at the seams listed in `docs/spec.md`. Expected bytes come
-from an independent source, preferably the worked examples in the manual
-(cite the table or page), never recomputed the way the code does.
+- `GLOSSARY.md` before naming anything (code, tests, docs, issues).
+- `docs/spec.md` before a design or test change: architecture, test seams,
+  Remaining work.
+- `docs/adr/` before changing something an ADR settled.
+- `CONTRIBUTING.md` for setup, the emulator, hardware runs, fixing older
+  commits, squashing a finished effort, releases, and where the manuals come
+  from.
 
-Checks: `uv run prek run -a` (ruff, ruff format, ty, actionlint, file checks) and
-`uv run pytest`; prek hooks run them on commit and push.
+Architecture: `alpha_led_sign.protocol` is pure: bytes in, bytes out. A pause the
+protocol needs is data on the `Packet`'s chunks, and the sender sleeps. A Sign
+Model is data, not a subclass: everything that differs between Sign Models
+lives in that data.
 
-Commits: Conventional Commits, Angular types only (`build`, `ci`, `docs`,
-`feat`, `fix`, `perf`, `refactor`, `test`); enforced by a prek `commit-msg` hook.
-Subjects become the changelog, so write them for users. Real changes go on a
-branch and a pull request.
+Tests: test-first, at the seams in `docs/spec.md`. Expected bytes come from an
+independent oracle, preferably a worked example in the manual, cited by table
+or page.
 
-PRs: Always merge with a regular merge commit (never squash or rebase merge).
+Checks: `uv run prek run -a` and `uv run pytest`; after a change under
+`emulator/`, also `npm test` there. prek runs the first on commit and pytest
+on push.
 
-Releases: SemVer `MAJOR.MINOR.PATCH` (e.g. `0.1.0`, no `v` prefix; ADR 0001).
-`scripts/release.sh` (git-cliff + uv version) bumps, writes the changelog,
-commits, and tags locally; pushing the tag triggers the Release workflow,
-which publishes. Never edit versions by hand. Never push, tag, or publish a
-release unless asked.
+Commits: Conventional Commits with Angular types only (`build`, `ci`, `docs`,
+`feat`, `fix`, `perf`, `refactor`, `test`), checked by a `commit-msg` hook.
+Subjects become the changelog, so write them for users. Work on a branch and
+merge it with a regular merge commit; a local merge takes the subject
+`refactor: merge branch '<name>'`.
+
+Releases: `scripts/release.sh` sets the version and the changelog.
+
+After committing, stop and report what is committed locally. Push, open a
+pull request, tag, release, or publish only when asked: pushed commits can't
+be amended without a force push.
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues live in GitHub Issues on `ellisgeek/alpha-sign-python`, through the `gh`
-CLI. Earlier efforts stay as markdown under `.scratch/`. See
-`docs/agents/issue-tracker.md`.
+GitHub Issues on `ellisgeek/alpha-sign-python`, through `gh`; earlier efforts
+are markdown under `.scratch/`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-The five default label strings (`needs-triage`, `needs-info`,
-`ready-for-agent`, `ready-for-human`, `wontfix`). See
-`docs/agents/triage-labels.md`.
+The five defaults, unchanged. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See
-`docs/agents/domain.md`.
+Single-context. See `docs/agents/domain.md`.

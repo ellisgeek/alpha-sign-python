@@ -1,0 +1,185 @@
+# great-docs site for alpha-led-sign: `uv run --group docs great-docs build`, then
+# `uv run --group docs great-docs preview`. The build directory, great-docs/, is
+# not committed. Options: https://posit-dev.github.io/great-docs/user-guide/configuration.html
+
+module: alpha_led_sign
+display_name: alpha-led-sign
+parser: google
+repo: https://github.com/ellisgeek/alpha-sign-python
+site_url: https://ellisgeek.github.io/alpha-sign-python/
+
+# Pages are ordered by their numeric filename prefix.
+user_guide: docs/user_guide
+
+reference:
+  - title: Sign
+    desc: Open a Sign and send it content, schedules, and settings.
+    contents:
+      - Sign
+      - SignTimeoutError
+
+  - title: Content
+    desc: A Message is Frames; a Frame is a Mode, a Display Position, and Segments.
+    contents:
+      - Message
+      - Frame
+      - Mode
+      - Position
+      - SpecialMode
+      - SpecialGraphic
+
+  - title: Control Codes
+    desc: Segments that change how text looks or insert live values.
+    contents:
+      - Color
+      - Font
+      - Speed
+      - Spacing
+      - Control
+      - Wide
+      - DoubleHigh
+      - TrueDescenders
+      - CharacterFlash
+      - Attribute
+      - CharacterAttribute
+      - CurrentTime
+      - CurrentDate
+      - DateFormat
+      - StringRef
+      - DotsPictureRef
+
+  - title: Markup
+    desc: Content written as one string, with tokens in braces.
+    contents:
+      - parse_markup
+      - parse_segments
+      - to_markup
+      - escape_markup
+      - MarkupError
+
+  - title: Files and pictures
+    desc: Memory Configuration entries, and DOTS PICTURE content.
+    contents:
+      - TextFile
+      - StringFile
+      - DotsPictureFile
+      - PictureColors
+      - DotsPicture
+      - PixelColor
+
+  - title: Scheduling, clock, and sound
+    contents:
+      - RunTime
+      - RunDays
+      - RunDay
+      - RunOrder
+      - Weekday
+      - TimeFormat
+      - Tone
+
+  - title: Sign Models and validation
+    desc: What each Sign Model can show, and what happens when content asks for more.
+    contents:
+      - SignModel
+      - UnsupportedCapability
+      - UnsupportedCapabilityWarning
+      - models.get
+      - models.by_sign_type
+      - models.validate
+      - models.GENERIC
+      - models.ALPHA_4080C
+      - models.ALPHA_4120C
+      - models.ALPHA_4120R
+      - models.ALPHA_4160C
+      - models.ALPHA_4160R
+      - models.ALPHA_4200C
+      - models.ALPHA_4200R
+      - models.ALPHA_4240C
+      - models.ALPHA_4240R
+      - models.BETABRITE
+      - models.REGISTRY
+
+  - title: Transports and discovery
+    contents:
+      - Transport
+      - SerialTransport
+      - SerialFormat
+      - discover
+      - DiscoveredSign
+
+  - title: "Protocol: Packets"
+    desc: >-
+      The pure protocol layer in alpha_led_sign.protocol: bytes in, bytes out, no I/O.
+      Most programs never need it.
+    contents:
+      - protocol.encode_packet
+      - protocol.Packet
+      - protocol.Chunk
+      - protocol.Recipient
+      - protocol.compute_checksum
+      - protocol.check_file_label
+      - protocol.check_sign_address
+
+  - title: "Protocol: Commands"
+    desc: Each Command is a class. Send any of them with Sign.send.
+    contents:
+      - protocol.Command
+      - protocol.Pause
+      - protocol.WriteText
+      - protocol.WriteString
+      - protocol.WriteDotsPicture
+      - protocol.SpecialFunction
+      - protocol.SetMemoryConfiguration
+      - protocol.ClearMemory
+      - protocol.SetTime
+      - protocol.SetDate
+      - protocol.SetDayOfWeek
+      - protocol.SetTimeFormat
+      - protocol.SetRunTimes
+      - protocol.SetRunDays
+      - protocol.SetRunSequence
+      - protocol.SetSpeaker
+      - protocol.Beep
+      - protocol.ProgrammableTone
+      - protocol.SoftReset
+      - protocol.ClearSerialErrorStatus
+      - protocol.SetSignAddress
+      - protocol.lock_byte
+      - protocol.PRIORITY_LABEL
+
+  - title: "Protocol: reads and Responses"
+    contents:
+      - protocol.Read
+      - protocol.ReadText
+      - protocol.ReadString
+      - protocol.ReadDotsPicture
+      - protocol.ReadSpecial
+      - protocol.ReadDayOfWeek
+      - protocol.ReadGeneralInformation
+      - protocol.ReadSerialErrorStatus
+      - protocol.NetworkQuery
+      - protocol.GeneralInformation
+      - protocol.SerialErrorStatus
+      - protocol.NetworkQueryResponse
+      - protocol.decode_response
+      - protocol.ResponseReader
+      - protocol.ResponseItem
+      - protocol.ReceivedResponse
+      - protocol.ResponseError
+      - protocol.UnexpectedResponseError
+
+  - title: "Protocol: content and Requirements"
+    contents:
+      - protocol.Segment
+      - protocol.ControlCode
+      - protocol.RawControl
+      - protocol.MemoryFile
+      - protocol.Capability
+      - protocol.ProtocolVersion
+      - protocol.requires
+      - protocol.Requirement
+      - protocol.VersionRequirement
+      - protocol.CapabilityRequirement
+      - protocol.DisplaySizeRequirement
+      - protocol.MemoryRequirement
+      - protocol.FontPositionRequirement

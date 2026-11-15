@@ -1,0 +1,115 @@
+---
+title: The protocol layer
+---
+
+`alpha_led_sign.protocol` is the Alpha protocol with no I/O: Commands in, bytes out,
+and bytes in, Responses out. `Sign` is built on it. You need it to send a Command
+that has no `Sign` method, to nest several Commands in one Packet, or to see the
+bytes the library sends.
+
+## Send any Command
+
+Every Command is a class in `alpha_led_sign.protocol`. `Sign.send` checks Commands
+against the Sign Model and sends them in one Packet:
+
+```python
+from alpha_led_sign.protocol import ClearSerialErrorStatus, WriteString
+
+sign.send(ClearSerialErrorStatus(), WriteString("T", "72F"))
+print(sign.serial_errors().ok)    # did that Packet arrive intact?
+```
+
+A Packet with more than one Command is **nested**. The Sign needs 100 ms of
+silence after each Command's start in a nested Packet, which the library keeps.
+Reads and tones must be the last Command in a Packet.
+
+`Sign.query` sends one read and returns its parsed answer:
+
+```python
+from alpha_led_sign.protocol import ReadDayOfWeek
+
+sign.query(ReadDayOfWeek())    # Weekday.SUNDAY
+```
+
+## See the bytes
+
+`encode_packet` turns Commands into a `Packet`. `bytes(packet)` gives the whole
+Packet, which is useful for logging and tests:
+
+```python
+from alpha_led_sign.protocol import Frame, Message, Recipient, WriteText, encode_packet
+
+hello = WriteText("A", Message(Frame(None, content="HELLO")))
+packet = encode_packet(Recipient("Z", 0), [hello])
+bytes(packet)
+# b'\x00\x00\x00\x00\x00\x01Z00\x02AAHELLO\x0301FB\x04'
+```
+
+That is the worked example from Appendix F of the manual. A `Packet` is a tuple of
+`Chunk`s, each with the seconds of silence that must follow it.
+
+## Write a Transport
+
+A Transport is any object with four methods: `write`, `pause`, `read`, and
+`close`. `SerialTransport` is the one the library ships. Write another to reach a
+Sign some other way, or to record what the library sends:
+
+```python
+class Recorder:
+    def __init__(self) -> None:
+        self.sent: list[bytes] = []
+
+    def write(self, data: bytes) -> None:
+        self.sent.append(data)
+
+    def pause(self, seconds: float) -> None:
+        pass
+
+    def read(self, timeout: float) -> bytes:
+        return b""
+
+    def close(self) -> None:
+        pass
+
+
+sign = Sign(Recorder(), model=models.ALPHA_4120C)
+sign.show("Hi")
+print(b"".join(sign.transport.sent))
+```
+
+`write` must return only once the bytes have left, so that a `pause` after it is
+real silence on the line. `read(timeout)` waits up to `timeout` seconds for the
+first byte and returns `b""` if none comes; `read(0)` returns only what has already
+arrived.
+
+## Write a Command
+
+A Command the library lacks is a small subclass: set the one-character Command
+Code, or the Special Function label, and return the data.
+
+```python
+from dataclasses import dataclass
+from typing import ClassVar
+
+from alpha_led_sign.protocol import SpecialFunction
+
+
+@dataclass(frozen=True)
+class SetSomething(SpecialFunction):
+    label: ClassVar[str] = "X"     # the Special Function label from the manual
+    value: int
+
+    def encode_payload(self) -> bytes:
+        return f"{self.value:02X}".encode("ascii")
+
+
+sign.send(SetSomething(5))
+```
+
+To make validation see what the Command needs, override `codes()` to list the
+Modes and Control Codes in its data, or `requirements()` to add other needs. Set
+`min_version` when it needs a later Protocol Version, and `must_be_last` when it
+must end a Packet.
+
+To decode Responses yourself, `ResponseReader` splits bytes into Responses as they
+arrive, and `decode_response` decodes one whole Response Packet.

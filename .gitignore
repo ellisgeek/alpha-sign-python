@@ -27,3 +27,6 @@ emulator/playwright/.cache/
 
 # Agent worktrees (Claude Code).
 .claude/worktrees/
+
+# great-docs build output (great-docs.yml).
+great-docs/

@@ -1,0 +1,99 @@
+---
+title: Scheduling, clock, and sound
+---
+
+## The clock
+
+A Sign keeps its own time, date, and day of the week. `{time}` and `{date}` show
+them, and Run Times are measured on them. Set all three at once:
+
+```python
+from datetime import datetime
+
+sign.set_clock(datetime.now())
+```
+
+Seconds are dropped. The Sign stores a two-digit year, read as 1997-2096, so a
+date outside those years raises `ValueError`.
+
+Choose 12-hour or 24-hour time:
+
+```python
+from alpha_led_sign import TimeFormat
+
+sign.set_time_format(TimeFormat.TWENTY_FOUR_HOUR)
+```
+
+## Which TEXT Files run, and when
+
+The Run Sequence is the list of TEXT Files the Sign shows in turn:
+
+```python
+sign.run_sequence("ABC")
+```
+
+Each File then runs during its Run Time, a daily start and stop time in
+10-minute steps. Set it in the Memory Configuration (`TextFile(..., run_time=...)`)
+or later, for any Files you name:
+
+```python
+from datetime import time
+
+from alpha_led_sign import RunTime
+
+sign.set_run_times({
+    "A": RunTime.between(time(8, 0), time(17, 0)),
+    "B": RunTime.ALWAYS,
+    "C": RunTime.NEVER,
+})
+```
+
+A time that is not on a 10-minute step raises `ValueError`. `RunTime.ALWAYS`,
+`RunTime.NEVER`, and `RunTime.ALL_DAY` are the manual's special Run Times; a new
+`TextFile` defaults to `ALWAYS`.
+
+Run Days limit a File to some days of the week:
+
+```python
+from alpha_led_sign import RunDay, RunDays, Weekday
+
+sign.set_run_days({
+    "A": RunDays(RunDay.WEEKDAYS),
+    "B": RunDays(RunDay.MONDAY, Weekday.THURSDAY),   # Monday to Thursday
+})
+```
+
+`RunDay` has single days, `DAILY`, `WEEKDAYS`, `WEEKENDS`, `ALWAYS`, and `NEVER`.
+The stop day only matters when the start is a single day.
+
+Writing Run Times or Run Days ends a Priority TEXT File.
+
+### Run order
+
+`run_sequence` takes an `order`:
+
+- `RunOrder.BY_RUN_TIME` (the default): each File runs during its Run Time.
+- `RunOrder.IN_ORDER`: every File runs in turn, ignoring Run Times.
+- `RunOrder.DELETE_WHEN_DONE`: each File runs during its Run Time, and is deleted
+  when its stop time passes.
+
+Pass `locked=True` to stop the Run Sequence being changed from the IR keyboard.
+
+## Sound
+
+The speaker is off when a Sign powers up. Turn it on first:
+
+```python
+from alpha_led_sign import Tone
+
+sign.set_speaker(True)
+sign.beep()                       # three short beeps
+sign.beep(Tone.CONTINUOUS)        # about 2 seconds
+sign.tone(frequency=100, duration=5, repeats=2)
+```
+
+`tone` plays for `duration` tenths of a second (1-15), then plays again `repeats`
+more times (0-15). A 4120C plays every `frequency` at the same pitch.
+
+The Sign can't take data while it plays a tone. `beep` waits 3 s before it returns,
+and `tone` waits until the last repeat has finished.

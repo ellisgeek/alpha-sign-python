@@ -1,0 +1,115 @@
+---
+title: Files and memory
+---
+
+A Sign keeps its content in Files, each named by a one-character File
+Label. There are three types:
+
+- A TEXT File holds a Message. The Sign shows its TEXT Files in turn.
+- A STRING File holds up to 125 bytes of text that a TEXT File shows with
+  `{string LABEL}`. Writing it does not blank the display.
+- A DOTS PICTURE File holds a small picture that a TEXT File shows with
+  `{picture LABEL}`. See [Pictures](05-pictures.qmd).
+
+At power-up a Sign has one TEXT File, `A`. To have more, write a Memory
+Configuration: the list of Files, with their types and sizes.
+
+## Set up the Files
+
+```python
+from alpha_led_sign import DotsPictureFile, StringFile, TextFile
+
+sign.configure_memory([
+    TextFile("A", size=256),
+    TextFile("B", size=256),
+    StringFile("T", size=16),
+    StringFile("H", size=8),
+    DotsPictureFile("P", rows=7, columns=8),
+])
+```
+
+::: {.callout-warning}
+Writing the Memory Configuration erases every File on the Sign, TEXT File `A`
+included. Do it once when you set a Sign up, then write the Files.
+:::
+
+A TEXT File's `size` is the most bytes its Message can encode to. The last File
+may be a TEXT File of size 0, which takes the rest of memory. A STRING File's size
+must be at least 1.
+
+`TextFile` also takes a `run_time` (default: always) and `locked`, which stops the
+File being changed from the IR keyboard. See
+[Scheduling, clock, and sound](06-scheduling-clock-sound.qmd).
+
+`sign.clear_memory()` erases every File and the Memory Configuration. It waits
+1.5 s before it returns, because a 4120C read sooner still reports the old Files'
+memory as in use.
+
+### The memory budget
+
+Every File costs its size plus 11 bytes of overhead. The library adds up a
+configuration before it sends it, and warns (or raises, with `strict=True`) when
+the total is more than the Sign Model's memory.
+
+On a 4120C, measured on a real Sign:
+
+- The memory is 28,872 bytes, not the 28,000 the brochure gives, and the Sign
+  keeps 9 of them back.
+- A DOTS PICTURE File costs 11 + 2 + rows × 2 × ⌈columns / 8⌉ bytes, whatever its
+  color depth. The manual says pictures are not counted at all.
+
+`SignModel.memory_needed` does the same sum, so you can check a configuration
+before you send it:
+
+```python
+files = [TextFile("A", size=20_000), StringFile("T", size=16)]
+models.ALPHA_4120C.memory_needed(files)    # 20047
+```
+
+A Sign refuses a configuration that does not fit, and keeps its old Files.
+
+## Live values: STRING Files
+
+Writing a TEXT File blanks the display while the Sign takes the new content.
+Writing a STRING File does not, so STRING Files are the way to show values that
+change: a temperature, a score, a queue length.
+
+Put a `{string LABEL}` in a TEXT File once, then write only the STRING File:
+
+```python
+sign.write_text("A", "{color amber}Temp: {color green}{string T}")
+
+while True:
+    sign.write_string("T", f"{read_sensor():.1f}F")
+    time.sleep(10)
+```
+
+STRING File content is literal text and a few Control Codes. It can hold colors
+(except the two rainbow colors), fonts, speeds, spacing, wide characters, the time,
+and `{new_line}`. It can't hold Frames or other Control Codes; the library raises
+`ValueError` before it sends one. Content longer than 125 bytes also raises.
+
+Write at most the File's size. A 4120C given more than a STRING File's size emptied
+the File and recorded an error.
+
+## The Priority TEXT File
+
+The Priority TEXT File replaces everything on the display until it is cleared:
+
+```python
+sign.priority("{frame flash}{color red}EVACUATE")
+...
+sign.clear_priority()
+```
+
+It holds at most 125 bytes, and needs no Memory Configuration. Writing Run Times
+or Run Days also ends it.
+
+## Reading Files back
+
+```python
+sign.read_text("A")      # a Message
+sign.read_string("T")    # a tuple of Segments, such as ('72.5F',)
+```
+
+See [Reading back and discovery](07-reading-and-discovery.qmd) for what reads need.

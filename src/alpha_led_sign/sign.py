@@ -55,7 +55,12 @@ DEFAULT_READ_TIMEOUT = 2.0
 
 
 class SignTimeoutError(TimeoutError):
-    """The Sign stopped answering before its Response was complete."""
+    """The Sign stopped answering before its Response was complete.
+
+    Raised by a read when no bytes arrive for ``read_timeout`` seconds. The usual
+    causes are a wrong Sign Address or Sign Type, a wrong baud rate or serial format,
+    or a cable that carries data to the Sign but not back.
+    """
 
 
 DEFAULT_LABEL = "A"
@@ -63,7 +68,52 @@ DEFAULT_LABEL = "A"
 
 
 class Sign:
-    """One Sign (or group of Signs) reached through a Transport."""
+    """One Sign, or a group of Signs, reached through a Transport.
+
+    Each task method builds the Commands for one job, checks them against the Sign
+    Model, and sends them in one Packet. A method that takes a ``str`` reads it as
+    markup (see ``alpha_led_sign.markup``).
+
+    Use ``Sign.serial`` to open a serial port. Pass a Transport to the constructor to
+    use something else, such as a test double. A Sign is a context manager that
+    closes its Transport on exit. It has no locking, so use it from one thread.
+
+    Args:
+        transport: Where Packets are written and Responses are read.
+        model: The Sign Model, which sets the Sign Type to address and the
+            Capabilities to check content against. ``models.GENERIC`` reaches every
+            Sign and checks only the Protocol Version.
+        address: The Sign Address, 0-255, or a two-character hex pattern in which
+            ``?`` matches any digit, such as ``"1?"``. 0 reaches every Sign of the
+            Sign Type.
+        strict: Raise ``UnsupportedCapability`` instead of warning when the model
+            lacks something a Command uses.
+        checksum: Send a Checksum after each Command so the Sign rejects damaged
+            data.
+        read_timeout: Seconds a read waits for each part of a Response.
+        broadcast_reads: Allow reads to Sign Address 0 or a ``?`` pattern. Every
+            matching Sign answers, so set it only when one Sign is on the line.
+
+    Raises:
+        ValueError: The Sign Address is out of range or is not a valid pattern.
+
+    Attributes:
+        transport: The Transport this Sign writes to and reads from.
+        model: The Sign Model content is checked against.
+        recipient: The Sign Type and Sign Address that Packets go to.
+        strict: Whether validation raises instead of warning.
+        checksum: Whether Commands are sent with Checksums.
+        read_timeout: Seconds a read waits for each part of a Response.
+        broadcast_reads: Whether reads may go to more than one Sign.
+
+    Examples:
+        ```python
+        from alpha_led_sign import Sign, models
+
+        with Sign.serial("/dev/ttyUSB0", model=models.ALPHA_4120C, address=1) as sign:
+            sign.show("{color green}Hello")
+        ```
+    """
 
     def __init__(
         self,
@@ -83,8 +133,6 @@ class Sign:
         self.strict = strict
         self.checksum = checksum
         self.broadcast_reads = broadcast_reads
-        """Send reads to Sign Address 0 or a ``?`` pattern. Every matching Sign answers,
-        so set it only when exactly one Sign is on the line."""
         self._responses = ResponseMatcher()
 
     @classmethod
@@ -101,7 +149,28 @@ class Sign:
         read_timeout: float = DEFAULT_READ_TIMEOUT,
         broadcast_reads: bool = False,
     ) -> "Sign":
-        """Open a Sign on a serial port (or any pyserial URL, such as ``loop://``)."""
+        """Open a Sign on a serial port.
+
+        Args:
+            url: A device such as ``/dev/ttyUSB0`` or ``COM3``, or any pyserial URL:
+                ``socket://host:port`` for a serial-to-TCP bridge or the emulator,
+                ``loop://`` for a loopback.
+            model: The Sign Model (see the class).
+            baudrate: The line speed. Alpha 1.0 Signs accept 1200 to 9600 baud.
+            serial_format: Data bits, parity, and stop bits.
+            address: The Sign Address or pattern (see the class).
+            strict: Raise instead of warning on unsupported content.
+            checksum: Send a Checksum after each Command.
+            read_timeout: Seconds a read waits for each part of a Response.
+            broadcast_reads: Allow reads to more than one Sign.
+
+        Returns:
+            A Sign that owns the opened port and closes it on ``close``.
+
+        Raises:
+            serial.SerialException: The port can't be opened.
+            ValueError: The Sign Address is out of range or is not a valid pattern.
+        """
         transport = SerialTransport(url, baudrate=baudrate, serial_format=serial_format)
         return cls(
             transport,
@@ -136,12 +205,36 @@ class Sign:
         position: Position = Position.FILL,
         label: str = DEFAULT_LABEL,
     ) -> None:
-        """Show ``content`` in TEXT File ``label``. The display blanks first.
+        """Write ``content`` to a TEXT File and show it. The display blanks first.
 
-        A string is markup, such as ``"{color red}Hi"`` (``alpha_led_sign.markup``): plain
-        text works, and ``{{`` and ``}}`` are literal braces. ``mode`` and ``position``
-        apply until the first ``{frame ...}`` token. A string inside a list of
-        Segments is literal.
+        This is the shortest way to put text on a Sign: every Sign has TEXT File
+        ``A`` at power-up, so it needs no Memory Configuration.
+
+        Args:
+            content: Markup such as ``"{color red}Hi"``, or a list of Segments. Plain
+                text is valid markup; write ``{{`` and ``}}`` for literal braces. A
+                string inside a list of Segments is literal text.
+            mode: How the first Frame is shown, until a ``{frame ...}`` token.
+            position: Where the first Frame is shown, until a ``{frame ...}`` token.
+            label: The File Label of the TEXT File to write.
+
+        Raises:
+            MarkupError: The markup can't be read.
+            ValueError: The File Label is invalid, or the text has a character that
+                is not printable ASCII.
+            UnsupportedCapability: The model lacks something the content uses, and
+                the Sign is strict.
+
+        Warns:
+            UnsupportedCapabilityWarning: The model lacks something the content uses,
+                and the Sign is not strict.
+
+        Examples:
+            ```python
+            sign.show("Hello")
+            sign.show("{color amber}Doors open at 7", mode=Mode.ROTATE)
+            sign.show(["{literal braces}"])  # a list holds literal text
+            ```
         """
         if isinstance(content, str):
             message = parse_markup(content, mode=mode, position=position)
@@ -150,45 +243,134 @@ class Sign:
         self.send(WriteText(label, message))
 
     def write_text(self, label: str, content: Message | Frame | str) -> None:
-        """Replace TEXT File ``label``. The display blanks while it is written.
+        """Replace the content of a TEXT File. The display blanks while it is written.
 
-        A string is markup (see ``show``). Before any ``{frame ...}`` token it is shown
-        in one HOLD Frame that fills the display.
+        To update part of the display without blanking it, put a ``StringRef`` in
+        the TEXT File and change the STRING File with ``write_string``.
+
+        Args:
+            label: The File Label of the TEXT File.
+            content: A Message, one Frame, or markup. Markup before any
+                ``{frame ...}`` token is shown in one HOLD Frame that fills the
+                display.
+
+        Raises:
+            MarkupError: The markup can't be read.
+            ValueError: The File Label is invalid, the text has a character that is
+                not printable ASCII, or ``label`` is the Priority TEXT File and the
+                content is longer than 125 bytes.
+            UnsupportedCapability: The model lacks something the content uses, and
+                the Sign is strict.
+
+        Warns:
+            UnsupportedCapabilityWarning: The model lacks something the content uses,
+                and the Sign is not strict.
+
+        Examples:
+            ```python
+            sign.write_text("A", "{frame rotate top}Temp: {string T}{frame hold bottom}{time}")
+            ```
         """
         self.send(WriteText(label, _as_message(content)))
 
     def write_string(self, label: str, content: str | Sequence[Segment]) -> None:
-        """Replace STRING File ``label``. The display does not blank: use it for live values.
+        """Replace the content of a STRING File. The display does not blank.
 
-        A string is markup (see ``show``) without ``{frame ...}`` tokens. Pass outside
-        values through ``escape_markup`` so their braces stay literal.
+        Use a STRING File for values that change often, such as a reading or a
+        score: a TEXT File shows it with ``{string LABEL}`` or ``StringRef``.
+
+        Args:
+            label: The File Label of the STRING File.
+            content: Markup without ``{frame ...}`` tokens, or a list of Segments.
+                Pass values from outside the program through ``escape_markup`` so
+                that their braces stay literal.
+
+        Raises:
+            MarkupError: The markup can't be read, or it has a ``{frame}`` token.
+            ValueError: The File Label is invalid, the content is longer than 125
+                bytes, or it has a Control Code a STRING File can't hold (Table 19).
+            UnsupportedCapability: The model lacks something the content uses, and
+                the Sign is strict.
+
+        Warns:
+            UnsupportedCapabilityWarning: The model lacks something the content uses,
+                and the Sign is not strict.
+
+        Examples:
+            ```python
+            sign.write_string("T", escape_markup(f"{reading:.1f}F"))
+            ```
         """
         if isinstance(content, str):
             content = parse_segments(content)
         self.send(WriteString(label, content))
 
     def priority(self, content: Message | Frame | str) -> None:
-        """Show the Priority TEXT File, which replaces everything else until cleared."""
+        """Show the Priority TEXT File in place of everything else until it is cleared.
+
+        The Priority TEXT File (label ``0``) holds at most 125 bytes. Writing Run
+        Times or Run Days also ends it.
+
+        Args:
+            content: A Message, one Frame, or markup, as for ``write_text``.
+
+        Raises:
+            MarkupError: The markup can't be read.
+            ValueError: The content is longer than 125 bytes, or the text has a
+                character that is not printable ASCII.
+            UnsupportedCapability: The model lacks something the content uses, and
+                the Sign is strict.
+
+        Warns:
+            UnsupportedCapabilityWarning: The model lacks something the content uses,
+                and the Sign is not strict.
+        """
         self.send(WriteText(PRIORITY_LABEL, _as_message(content)))
 
     def clear_priority(self) -> None:
-        """End the Priority TEXT File; the Sign goes back to its Run Sequence."""
+        """End the Priority TEXT File. The Sign goes back to its Run Sequence."""
         self.send(WriteText(PRIORITY_LABEL, Message()))
 
     def configure_memory(self, files: Sequence[MemoryFile]) -> None:
         """Replace the Memory Configuration with ``files``.
 
-        This ERASES EVERY FILE on the Sign, including TEXT File "A". Do it once when
-        setting a Sign up, then write the Files.
+        This ERASES EVERY FILE on the Sign, TEXT File ``A`` included. Do it once when
+        you set a Sign up, then write the Files.
 
-        Only the last File may be a TEXT File of size 0, which takes the rest of memory.
-        The sizes plus the model's overhead per File must fit in its memory; a
-        configuration that doesn't warns, or raises UnsupportedCapability when strict.
+        Args:
+            files: The TEXT, STRING, and DOTS PICTURE Files the Sign should have.
+                Only the last one may be a TEXT File of size 0, which takes the rest
+                of memory.
+
+        Raises:
+            ValueError: ``files`` is empty, or a TEXT File other than the last has
+                size 0.
+            UnsupportedCapability: The Files need more memory than the model has,
+                counting its overhead for each File, and the Sign is strict.
+
+        Warns:
+            UnsupportedCapabilityWarning: The Files need more memory than the model
+                has, and the Sign is not strict.
+
+        Examples:
+            ```python
+            sign.configure_memory(
+                [
+                    TextFile("A", size=256),
+                    StringFile("T", size=16),
+                    DotsPictureFile("P", rows=7, columns=8),
+                ]
+            )
+            ```
         """
         self.send(SetMemoryConfiguration(files))
 
     def clear_memory(self) -> None:
-        """Erase every File and the Memory Configuration."""
+        """Erase every File and the Memory Configuration.
+
+        The Sign needs 1.5 s after this before it reports its memory correctly, so
+        the send waits that long before it returns.
+        """
         self.send(ClearMemory())
 
     def soft_reset(self) -> None:
@@ -196,7 +378,11 @@ class Sign:
         self.send(SoftReset())
 
     def set_time_format(self, time_format: TimeFormat) -> None:
-        """Show the time in 12-hour (am/pm) or 24-hour format."""
+        """Show the time in 12-hour (AM/PM) or 24-hour format.
+
+        Args:
+            time_format: The format for ``{time}`` and the CLOCK Mode.
+        """
         self.send(SetTimeFormat(time_format))
 
     def run_sequence(
@@ -206,11 +392,18 @@ class Sign:
         order: RunOrder = RunOrder.BY_RUN_TIME,
         locked: bool = False,
     ) -> None:
-        """Show these TEXT Files, in this order.
+        """Set the TEXT Files the Sign shows, and their order.
 
-        ``order`` says whether each File waits for its Run Time (the default), runs in
-        turn regardless, or is deleted after its Stop Time. A locked Run Sequence can't
-        be changed from the IR keyboard.
+        Args:
+            labels: The File Labels of 1 to 128 TEXT Files, in the order to show
+                them. A string such as ``"ABC"`` works.
+            order: Whether each File waits for its Run Time (the default), every
+                File runs in turn, or each File is deleted after its Stop Time.
+            locked: Stop the Run Sequence from being changed with the IR keyboard.
+
+        Raises:
+            ValueError: There are no labels or more than 128, or a File Label is
+                invalid.
         """
         self.send(SetRunSequence(labels, order=order, locked=locked))
 
@@ -218,6 +411,22 @@ class Sign:
         """Set when each of these TEXT Files runs each day. Other Files keep theirs.
 
         Writing Run Times ends a Priority TEXT File (p. 20).
+
+        Args:
+            run_times: A Run Time for each File Label.
+
+        Raises:
+            ValueError: A File Label is invalid.
+
+        Examples:
+            ```python
+            sign.set_run_times(
+                {
+                    "A": RunTime.between(time(8, 0), time(17, 0)),
+                    "B": RunTime.ALWAYS,
+                }
+            )
+            ```
         """
         self.send(SetRunTimes(run_times))
 
@@ -225,30 +434,59 @@ class Sign:
         """Set the days each of these TEXT Files runs on.
 
         Writing Run Days ends a Priority TEXT File (p. 20).
+
+        Args:
+            run_days: The Run Days for each File Label.
+
+        Raises:
+            ValueError: A File Label is invalid.
         """
         self.send(SetRunDays(run_days))
 
     def set_speaker(self, enabled: bool) -> None:
-        """Turn the speaker on or off. It is off by default (p. 21), and tones need it."""
+        """Turn the speaker on or off.
+
+        The speaker is off by default (p. 21), and ``beep`` and ``tone`` make no
+        sound until it is on.
+
+        Args:
+            enabled: True to turn the speaker on.
+        """
         self.send(SetSpeaker(enabled))
 
     def tone(self, frequency: int, duration: int, repeats: int = 0) -> None:
-        """Play a tone: ``frequency`` 0-254, ``duration`` 1-15 tenths of a second.
+        """Play a tone, then wait until it has finished.
 
-        The manual gives no scale for ``frequency``, and a 4120C ignores it: every value
-        plays at the same pitch (docs/hardware-results.md).
+        The Sign can't take data while the tone plays, so this returns only after
+        the first play and every repeat. The manual gives no scale for
+        ``frequency``, and a 4120C plays every value at the same pitch
+        (docs/hardware-results.md).
 
-        The Sign can't take data while the tone plays, so this waits until the tone
-        has finished, counting the first play and every repeat.
+        Args:
+            frequency: The speaker setting, 0-254.
+            duration: The length of one play, 1-15 tenths of a second.
+            repeats: How many times to play it again, 0-15.
+
+        Raises:
+            ValueError: A value is out of range.
         """
         self.send(ProgrammableTone(frequency, duration, repeats))
 
     def set_sign_address(self, address: int, *, broadcast: bool = False) -> None:
-        """Give the Sign a new Sign Address, then address it there.
+        """Give the Sign a new Sign Address, and send to that address from now on.
 
-        Sent to Sign Address 0 or to a pattern with ``?``, this reaches every matching
-        Sign and gives them all the same address, so it is refused unless
-        ``broadcast=True``. A DIP switch address wins after a power cycle (p. 26).
+        A Sign Address set by DIP switch takes over again after a power cycle
+        (p. 26).
+
+        Args:
+            address: The new Sign Address, 0-255. Avoid 0: it is the broadcast
+                address, so every Sign of the Sign Type acts on it.
+            broadcast: Send even though this Sign object addresses Sign Address 0 or
+                a ``?`` pattern. Every matching Sign then takes the same new address.
+
+        Raises:
+            ValueError: This Sign object addresses more than one Sign and
+                ``broadcast`` is False, or ``address`` is not 0-255. Nothing is sent.
         """
         if not broadcast and self.recipient.reaches_several:
             raise ValueError(
@@ -259,51 +497,158 @@ class Sign:
         self.recipient = Recipient(self.recipient.sign_type, address)
 
     def set_clock(self, now: datetime) -> None:
-        """Set the time, date, and day of the week in one Packet. Seconds are dropped."""
+        """Set the time, the date, and the day of the week in one Packet.
+
+        Args:
+            now: The time to set. Seconds and the time zone are ignored.
+
+        Raises:
+            ValueError: The year is outside 1997-2096, which a two-digit year can
+                show.
+
+        Examples:
+            ```python
+            sign.set_clock(datetime.now())
+            ```
+        """
         self.send(SetTime(now.time()), SetDate(now.date()), SetDayOfWeek(Weekday.of(now.date())))
 
     def beep(self, tone: Tone = Tone.THREE_BEEPS) -> None:
-        """Sound a built-in tone. The Sign can't take data for about 3 s afterwards."""
+        """Sound a built-in tone, then wait 3 s while the Sign can't take data.
+
+        Args:
+            tone: Which built-in tone to play.
+        """
         self.send(Beep(tone))
 
     def read_text(self, label: str = DEFAULT_LABEL) -> Message:
-        """Read TEXT File ``label`` back. The display pauses while the Sign answers."""
+        """Read a TEXT File back. The display pauses while the Sign answers.
+
+        Args:
+            label: The File Label of the TEXT File.
+
+        Returns:
+            The TEXT File's content. ``to_markup`` turns it into markup.
+
+        Raises:
+            ValueError: The File Label is invalid, or this Sign object addresses more
+                than one Sign and ``broadcast_reads`` is False.
+            SignTimeoutError: No complete Response arrived.
+            ResponseError: The Response is damaged or answers a different read.
+        """
         return self.query(ReadText(label))
 
     def read_string(self, label: str) -> tuple[Segment, ...]:
-        """Read STRING File ``label`` back: its text and Control Codes."""
+        """Read a STRING File back.
+
+        Args:
+            label: The File Label of the STRING File.
+
+        Returns:
+            The STRING File's text and Control Codes, in order.
+
+        Raises:
+            ValueError: The File Label is invalid, or this Sign object addresses more
+                than one Sign and ``broadcast_reads`` is False.
+            SignTimeoutError: No complete Response arrived.
+            ResponseError: The Response is damaged or answers a different read.
+        """
         return self.query(ReadString(label))
 
     def write_dots_picture(self, label: str, picture: DotsPicture) -> None:
-        """Write a SMALL DOTS PICTURE File. The display blanks until the picture is in.
+        """Write a SMALL DOTS PICTURE File. The display blanks until it is written.
 
         The picture's size must match the File's entry in the Memory Configuration
-        (p. 39); the library does not track that, so check it yourself. A TEXT File
-        shows the picture with ``DotsPictureRef(label)``.
+        (p. 39). The library does not keep track of that entry, so check the size
+        yourself. A TEXT File shows the picture with ``{picture LABEL}`` or
+        ``DotsPictureRef``.
+
+        Args:
+            label: The File Label of the DOTS PICTURE File.
+            picture: The pixels to write.
+
+        Raises:
+            ValueError: The File Label is invalid.
+            UnsupportedCapability: The model can't show pictures, the picture is
+                larger than its display, or it uses colors a red-only model lacks,
+                and the Sign is strict.
+
+        Warns:
+            UnsupportedCapabilityWarning: The same problems, when the Sign is not
+                strict.
         """
         self.send(WriteDotsPicture(label, picture))
 
     def read_dots_picture(self, label: str) -> DotsPicture:
-        """Read SMALL DOTS PICTURE File ``label`` back. The display pauses meanwhile."""
+        """Read a SMALL DOTS PICTURE File back. The display pauses meanwhile.
+
+        Args:
+            label: The File Label of the DOTS PICTURE File.
+
+        Returns:
+            The picture, at the size the Sign reports.
+
+        Raises:
+            ValueError: The File Label is invalid, or this Sign object addresses more
+                than one Sign and ``broadcast_reads`` is False.
+            SignTimeoutError: No complete Response arrived.
+            ResponseError: The Response is damaged or answers a different read.
+        """
         return self.query(ReadDotsPicture(label))
 
     def info(self) -> GeneralInformation:
-        """Read firmware, clock, speaker, and memory details."""
+        """Read the Sign's firmware, clock, speaker, and memory details.
+
+        Returns:
+            What the Sign reports about itself.
+
+        Raises:
+            ValueError: This Sign object addresses more than one Sign and
+                ``broadcast_reads`` is False.
+            SignTimeoutError: No complete Response arrived.
+            ResponseError: The Response is damaged or answers a different read.
+        """
         return self.query(ReadGeneralInformation())
 
     def serial_errors(self) -> SerialErrorStatus:
-        """Read the errors recorded since the last read. Reading resets the register."""
+        """Read the serial errors the Sign recorded since the last time they were read.
+
+        Reading resets the record, so each call covers the Packets since the one
+        before. ``.ok`` is True when every Packet arrived intact.
+
+        Returns:
+            The Sign's Serial Error Status Register.
+
+        Raises:
+            ValueError: This Sign object addresses more than one Sign and
+                ``broadcast_reads`` is False.
+            SignTimeoutError: No complete Response arrived.
+            ResponseError: The Response is damaged or answers a different read.
+        """
         return self.query(ReadSerialErrorStatus())
 
     def query[T](self, read: Read[T]) -> T:
-        """Send one Read Command and parse the Sign's Response.
+        """Send one Read Command and return the Sign's answer.
 
-        Only the addressed Sign may answer, so a Read to Sign Address 0 or a ``?``
-        pattern is refused unless ``broadcast_reads`` is set. Anything received before
-        the Read is sent is discarded. After that, a Response to some
-        other Read (a late answer to one that timed out) is skipped, but only as many
-        as there are unanswered Reads. A late answer to the same kind of Read can't be
-        told apart from the real one, so it is taken as the answer.
+        Bytes that arrived before the Read is sent are discarded. After that, a
+        Response to some other kind of Read (a late answer to one that timed out) is
+        skipped, but only as many as there are unanswered Reads. A late answer to the
+        same kind of Read can't be told apart from the real one, so it is taken as
+        the answer.
+
+        Args:
+            read: The Read Command to send.
+
+        Returns:
+            The answer, parsed by ``read``.
+
+        Raises:
+            ValueError: This Sign object addresses Sign Address 0 or a ``?`` pattern
+                and ``broadcast_reads`` is False. Nothing is sent.
+            SignTimeoutError: No complete Response arrived.
+            ResponseError: The Response is damaged, or it can't be parsed.
+            UnexpectedResponseError: The Response answers a different Read, and no
+                other Read is waiting for an answer.
         """
         if self.recipient.reaches_several and not self.broadcast_reads:
             raise ValueError(
@@ -328,7 +673,32 @@ class Sign:
                         raise error
 
     def send(self, *commands: Command) -> None:
-        """Validate ``commands`` against the model and send them in one Packet."""
+        """Check Commands against the Sign Model and send them in one Packet.
+
+        The task methods all send through this. Call it directly to send Commands
+        from ``alpha_led_sign.protocol`` that have no task method, or to nest several
+        Commands in one Packet.
+
+        Args:
+            *commands: The Commands to send, in order.
+
+        Raises:
+            ValueError: There are no Commands, a Command that must be last is not
+                last, or a Command's data contains a framing byte.
+            UnsupportedCapability: The model lacks something a Command uses, and the
+                Sign is strict. Nothing is sent.
+
+        Warns:
+            UnsupportedCapabilityWarning: The model lacks something a Command uses,
+                and the Sign is not strict. The Packet is sent anyway.
+
+        Examples:
+            ```python
+            from alpha_led_sign.protocol import ClearSerialErrorStatus, WriteString
+
+            sign.send(ClearSerialErrorStatus(), WriteString("T", "72F"))
+            ```
+        """
         validate(self.model, commands, strict=self.strict)
         send_packet(self.transport, encode_packet(self.recipient, commands, checksum=self.checksum))
         self._responses.sent(commands)

@@ -6,16 +6,28 @@ from alpha_led_sign.protocol.framing import EOT, ETX, NUL, SOH, STX, compute_che
 
 
 class ResponseError(ValueError):
-    """A Response Packet that is malformed, fails its checksum, or answers something else."""
+    """A Response Packet that is malformed, fails its Checksum, or can't be parsed.
+
+    It is a ValueError. A read raises it rather than skip the Response.
+    """
 
 
 class UnexpectedResponseError(ResponseError):
-    """A well-formed Response that answers a different Read, such as a late one."""
+    """A well-formed Response that answers a different Read.
+
+    A read raises it when no other Read is waiting for an answer. While one is, the
+    Response is taken as that Read's late answer and skipped.
+    """
 
 
 @dataclass(frozen=True)
 class ResponseItem:
-    """One Command in a Response: its Command Code and Data Field."""
+    """One Command in a Response.
+
+    Attributes:
+        code: The Command Code.
+        data: The Data Field.
+    """
 
     code: str
     data: bytes
@@ -26,7 +38,18 @@ RESPONSE_HEADER = b"000"
 
 
 def decode_response(data: bytes) -> tuple[ResponseItem, ...]:
-    """Decode a Response Packet (pp. 19, 36, 38) into its Commands, checking each checksum."""
+    """Decode a Response Packet (pp. 19, 36, 38) into its Commands.
+
+    Args:
+        data: One whole Response Packet, from the sync NULs through EOT.
+
+    Returns:
+        The Commands, in order.
+
+    Raises:
+        ResponseError: The header is not a Response's, a Command is malformed or
+            fails its Checksum, or anything but EOT follows the Commands.
+    """
     start = data.find(SOH)
     if start < 0 or data[:start].strip(NUL):
         raise ResponseError(f"no Response Packet header in {data!r}")
@@ -56,7 +79,11 @@ type ReceivedResponse = tuple[ResponseItem, ...] | ResponseError
 
 
 class ResponseReader:
-    """Splits the bytes a Sign sends back into Response Packets, however they arrive."""
+    """Splits the bytes a Sign sends back into Response Packets, however they arrive.
+
+    Feed it bytes as they come. It keeps the bytes of an unfinished Response until
+    the rest arrives.
+    """
 
     def __init__(self) -> None:
         self._buffer = b""
@@ -72,10 +99,15 @@ class ResponseReader:
         return bool(self._buffer.strip(NUL))
 
     def feed(self, data: bytes) -> list[ReceivedResponse]:
-        """Add received bytes; return the Responses they complete.
+        """Add received bytes.
 
-        A Packet that fails to decode comes back as its ResponseError, in order, so the
-        caller decides whether to raise or skip it.
+        Args:
+            data: The bytes received.
+
+        Returns:
+            Each Response the bytes complete, in order. A Packet that fails to
+            decode comes back as its ResponseError, so the caller decides whether
+            to raise it or skip it.
         """
         self._buffer += data
         responses: list[ReceivedResponse] = []

@@ -23,7 +23,13 @@ MARGIN = 1.0
 
 @dataclass(frozen=True)
 class DiscoveredSign:
-    """A Sign that answered a Network Query."""
+    """A Sign that answered a Network Query.
+
+    Attributes:
+        sign_type: The Sign's one-character Sign Type.
+        address: The Sign's Sign Address.
+        errors: The Sign's Serial Error Status Register when it answered.
+    """
 
     sign_type: str
     address: int
@@ -31,7 +37,10 @@ class DiscoveredSign:
 
     @property
     def model(self) -> SignModel | None:
-        """The registered Sign Model with this Sign Type, if there is exactly one."""
+        """The registered Sign Model with this Sign Type.
+
+        None when no model, or more than one, has the Sign Type.
+        """
         return models.by_sign_type(self.sign_type)
 
 
@@ -42,14 +51,40 @@ def discover(
     checksum: bool = True,
     clock: Callable[[], float] = time.monotonic,
 ) -> list[DiscoveredSign]:
-    """Broadcast a Network Query and collect every answer, sorted by Sign Address.
+    """Find the Signs on a line and their Sign Addresses.
 
-    Signs answer one after another, 1 s + 0.5 s x their address after the query, so
-    searching all 255 addresses takes over two minutes. Lower ``max_address`` when the
-    Signs' addresses are known to be small. Two Signs sharing an address garble each
-    other's answers (p. 32); those answers are skipped with a warning.
+    This broadcasts a Network Query to every Sign and collects the answers. Each
+    Sign answers 1 s + 0.5 s x its Sign Address after the query, so a search of all
+    255 addresses takes over two minutes. Lower ``max_address`` when the addresses
+    are known to be small. A Sign ignores other Commands until it has answered.
 
-    ``clock`` gives the time in seconds that the wait for answers is measured on.
+    Two Signs that share an address garble each other's answers (p. 32). Those
+    answers are skipped with a warning.
+
+    Args:
+        transport: The line to search. Discovery takes a Transport, not a Sign,
+            because it reaches every Sign Type.
+        max_address: The highest Sign Address to wait for, 0-255.
+        checksum: Send the query with a Checksum.
+        clock: Returns the time in seconds. The wait for answers is measured on it.
+
+    Returns:
+        One entry for each Sign that answered, sorted by Sign Address.
+
+    Raises:
+        ValueError: ``max_address`` is not 0-255.
+
+    Warns:
+        UserWarning: An answer was garbled and skipped.
+
+    Examples:
+        ```python
+        from alpha_led_sign import SerialTransport, discover
+
+        with SerialTransport("/dev/ttyUSB0") as line:
+            for found in discover(line, max_address=15):
+                print(found.address, found.sign_type, found.model)
+        ```
     """
     check_sign_address(max_address, name="max_address")
     broadcast = Recipient(models.GENERIC.sign_type, 0)

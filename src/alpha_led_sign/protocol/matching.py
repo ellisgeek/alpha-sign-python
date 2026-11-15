@@ -20,15 +20,22 @@ from alpha_led_sign.protocol.responses import (
 
 @dataclass(frozen=True)
 class Answer[T]:
-    """The parsed answer to the Read being waited for."""
+    """The parsed answer to the Read being waited for.
+
+    Attributes:
+        value: What the Read's ``parse`` returned.
+    """
 
     value: T
 
 
 @dataclass(frozen=True)
 class Skipped:
-    """A Response that belongs to something earlier: a late answer to another Read, or
-    the rest of one that had begun before this Read was sent."""
+    """A Response that belongs to something earlier.
+
+    It is a late answer to another Read, or the rest of one that had begun before
+    this Read was sent.
+    """
 
 
 type Outcome[T] = Answer[T] | Skipped | ResponseError
@@ -36,7 +43,10 @@ type Outcome[T] = Answer[T] | Skipped | ResponseError
 
 
 class ResponseMatcher:
-    """Matches the Responses a Sign sends back to the Reads sent to it."""
+    """Matches the Responses a Sign sends back to the Reads sent to it.
+
+    ``Sign.query`` uses one. The caller moves bytes between it and the Transport.
+    """
 
     def __init__(self) -> None:
         self._reader = ResponseReader()
@@ -49,20 +59,37 @@ class ResponseMatcher:
         return self._reader.pending
 
     def discard(self, data: bytes) -> None:
-        """Take bytes received before a Read is sent: drop each complete Response (it
-        answers an earlier Read), and keep a partial one so it can be skipped later."""
+        """Take bytes received before a Read is sent.
+
+        Each complete Response is dropped, because it answers an earlier Read. A
+        partial one is kept so that the rest of it can be skipped later.
+
+        Args:
+            data: The bytes received.
+        """
         self._unanswered = max(self._unanswered - len(self._reader.feed(data)), 0)
 
     def sent(self, commands: Sequence[Command]) -> None:
-        """Note a Packet sent. Its Reads are now waiting for Responses."""
+        """Record that a Packet was sent. Its Reads now wait for Responses.
+
+        Args:
+            commands: The Packet's Commands.
+        """
         reads = sum(isinstance(command, Read) for command in commands)
         if reads and self._reader.has_partial:
             self._skip_next = True
         self._unanswered += reads
 
     def feed[T](self, read: Read[T], data: bytes) -> list[Outcome[T]]:
-        """Take bytes received while waiting for ``read``; say what each Response they
-        complete means for it."""
+        """Take bytes received while waiting for a Read.
+
+        Args:
+            read: The Read being waited for.
+            data: The bytes received.
+
+        Returns:
+            What each Response the bytes complete means for ``read``, in order.
+        """
         return [self._outcome(read, response) for response in self._reader.feed(data)]
 
     def _outcome[T](

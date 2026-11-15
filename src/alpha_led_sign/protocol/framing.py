@@ -10,5 +10,17 @@ SYNC = NUL * 5
 
 
 def compute_checksum(data: bytes) -> int:
-    """The 16-bit sum of ``data``, which runs from an STX through its ETX inclusive (p. 12)."""
+    r"""Compute a Checksum (p. 12).
+
+    Args:
+        data: The bytes from an STX through its ETX, both included.
+
+    Returns:
+        The 16-bit sum of the bytes.
+
+    Examples:
+        >>> from alpha_led_sign.protocol import compute_checksum
+        >>> f"{compute_checksum(b'\x02AAHELLO\x03'):04X}"
+        '01FB'
+    """
     return sum(data) & 0xFFFF

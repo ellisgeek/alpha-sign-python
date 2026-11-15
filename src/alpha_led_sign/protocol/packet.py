@@ -21,10 +21,17 @@ _ADDRESS_PATTERN = re.compile(r"[0-9A-F?]{2}")
 
 @dataclass(frozen=True)
 class Recipient:
-    """One Sign Type and Sign Address pair.
+    """One Sign Type and Sign Address pair: the Signs that act on a Packet.
 
-    ``address`` is 0-255 (0 is broadcast), or a two-character hex pattern in which ``?``
-    matches any digit: ``"1?"`` selects addresses 10H-1FH (p. 11).
+    Attributes:
+        sign_type: One ASCII character, such as ``a`` for a 4120C or ``Z`` for all
+            Signs.
+        address: 0-255 (0 is broadcast), or a two-character hex pattern in which
+            ``?`` matches any digit: ``"1?"`` selects addresses 10H-1FH (p. 11).
+
+    Raises:
+        ValueError: The Sign Type is not one ASCII character, or the address is out
+            of range or is not a valid pattern.
     """
 
     sign_type: str
@@ -48,6 +55,11 @@ class Recipient:
         return "?" in self.address or int(self.address, 16) == 0
 
     def encode(self) -> bytes:
+        """Encode the Sign Type and Sign Address.
+
+        Returns:
+            The three bytes that follow SOH in a Packet's header.
+        """
         if isinstance(self.address, int):
             return f"{self.sign_type}{self.address:02X}".encode("ascii")
         return f"{self.sign_type}{self.address}".encode("ascii")
@@ -59,7 +71,12 @@ NESTED_STX_PAUSE = 0.1
 
 @dataclass(frozen=True)
 class Chunk:
-    """Bytes to send in one go, then ``pause_after`` seconds of silence before the next."""
+    """Bytes to send in one go, then silence before the next Chunk.
+
+    Attributes:
+        data: The bytes.
+        pause_after: Seconds the line must stay quiet after ``data``.
+    """
 
     data: bytes
     pause_after: float = 0.0
@@ -69,8 +86,12 @@ class Chunk:
 class Packet:
     """An encoded Packet, split where the protocol needs the line to go quiet.
 
-    Sending it means writing each chunk and sleeping for its pause. ``bytes(packet)``
-    gives the whole Packet with no pauses, for logging and comparison.
+    Sending it means writing each Chunk and waiting for its pause, which
+    ``alpha_led_sign.transport.send_packet`` does. ``bytes(packet)`` gives the whole
+    Packet with no pauses, for logging and comparison.
+
+    Attributes:
+        chunks: The Chunks, in order.
     """
 
     chunks: tuple[Chunk, ...]
@@ -82,7 +103,11 @@ class Packet:
 def _split_pauses(
     encoded: bytes | Sequence[bytes | Pause],
 ) -> tuple[bytes, list[tuple[int, float]]]:
-    """A Command's Data Field, and each pause in it as (offset into the data, seconds)."""
+    """Separate a Command's Data Field from the pauses in it.
+
+    Returns:
+        The data, and each pause as (offset into the data, seconds).
+    """
     if isinstance(encoded, bytes):
         return encoded, []
     data, pauses = b"", []
@@ -100,7 +125,33 @@ def encode_packet(
     *,
     checksum: bool = True,
 ) -> Packet:
-    """Encode one Packet that sends ``commands``, in order, to every Recipient."""
+    r"""Encode one Packet that sends Commands, in order, to every Recipient.
+
+    A Packet with more than one Command is nested: it has a 100 ms pause after each
+    STX. A lone Command without a Checksum has no ETX (Table 38).
+
+    Args:
+        recipients: One Recipient, or several.
+        commands: The Commands, in order.
+        checksum: Send a Checksum after each Command.
+
+    Returns:
+        The Packet, split where the line must go quiet.
+
+    Raises:
+        ValueError: There are no Commands, a Command that must be last is not last,
+            or a Command's data contains a framing byte (SOH, STX, ETX, or EOT).
+
+    Examples:
+        The worked example in Appendix F:
+
+        >>> from alpha_led_sign.protocol import Message, Frame, Recipient, WriteText
+        >>> packet = encode_packet(
+        ...     Recipient("Z", 0), [WriteText("A", Message(Frame(None, content="HELLO")))]
+        ... )
+        >>> bytes(packet)
+        b'\x00\x00\x00\x00\x00\x01Z00\x02AAHELLO\x0301FB\x04'
+    """
     if isinstance(recipients, Recipient):
         recipients = [recipients]
     if not commands:

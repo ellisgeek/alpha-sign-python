@@ -1,0 +1,112 @@
+---
+title: Getting started
+---
+
+alpha-led-sign controls Alpha-protocol LED message signs over a serial line. It was
+built for, and tested on, an Alpha 4120C. It has profiles for the rest of the 4000
+Series and the BetaBrite, and a generic profile for any Alpha sign.
+
+## Install
+
+alpha-led-sign needs Python 3.12 or later. Its only dependency is
+[pyserial](https://pyserial.readthedocs.io/). It is not on PyPI yet, so install it
+from the repository:
+
+```sh
+uv add git+https://github.com/ellisgeek/alpha-sign-python
+# or
+pip install git+https://github.com/ellisgeek/alpha-sign-python
+```
+
+The import name is `alpha_led_sign`, distinct from the older `alphasign`
+library.
+
+## Connect a Sign
+
+A 4000 Series Sign has an RJ11 serial port. Connect it to a USB serial adapter,
+then open the Sign by the adapter's device name:
+
+```python
+from alpha_led_sign import Sign, models
+
+with Sign.serial("/dev/ttyUSB0", model=models.ALPHA_4120C) as sign:
+    sign.show("Hello")
+```
+
+On macOS the device is named like `/dev/tty.usbserial-1410`; on Windows it is a
+`COM` port. The `with` block closes the port at the end.
+
+`show` writes TEXT File `A`, which every Sign has when it powers up, so this works
+on a Sign fresh from the box. The display goes blank for a moment while the File is
+written.
+
+### Line settings
+
+The defaults are 9600 baud, 8 data bits, no parity, and 1 stop bit. Alpha 1.0 Signs
+also accept 7 data bits, even parity, and 2 stop bits, at 1200 to 9600 baud:
+
+```python
+from alpha_led_sign import SerialFormat
+
+sign = Sign.serial(
+    "/dev/ttyUSB0", baudrate=4800, serial_format=SerialFormat.SEVEN_E_TWO
+)
+```
+
+`Sign.serial` takes any [pyserial URL](https://pyserial.readthedocs.io/en/latest/url_handlers.html),
+so `socket://host:port` reaches a Sign through a serial-to-TCP bridge. The bridge
+must keep the short silences the protocol needs: some Commands need the line quiet
+for 100 ms at a fixed point. A bridge that merges writes can remove those pauses.
+
+## Choose a Sign Model and Sign Address
+
+The `model` tells the library two things: which Sign Type to address, and what the
+Sign can show. With `models.ALPHA_4120C`, the library addresses 4120C Signs and
+warns before it sends a Mode or color a 4120C does not have. See
+[Sign Models and validation](08-sign-models.qmd).
+
+Without a `model`, the library uses `models.GENERIC`. It addresses every Alpha Sign
+and checks only the Protocol Version.
+
+The `address` picks one Sign among Signs of the same Sign Type on one line. The
+default, 0, is the broadcast address: every matching Sign acts on what you send.
+That is fine for writes to a single Sign. Reads need the Sign's own address,
+because every Sign that matches answers and their answers collide:
+
+```python
+with Sign.serial("/dev/ttyUSB0", model=models.ALPHA_4120C, address=1) as sign:
+    print(sign.info())
+```
+
+[Reading back and discovery](07-reading-and-discovery.qmd) shows how to find the
+addresses of the Signs on a line.
+
+## Try it without a Sign
+
+The repository has an emulator in `emulator/`: a program that acts like one or
+more Signs and draws what each one shows in a web page. It needs Node. From a
+clone of the repository:
+
+```sh
+cd emulator
+npm ci
+npm run serve
+```
+
+Then open it as a serial port at `socket://127.0.0.1:4120`:
+
+```python
+with Sign.serial("socket://127.0.0.1:4120", model=models.ALPHA_4120C) as sign:
+    sign.show("{color green}It works")
+```
+
+The emulator follows the manual, not the firmware. Content that looks right there
+can still look different on a real Sign.
+
+## Next steps
+
+- [Content](02-content.qmd): Messages, Frames, Modes, colors, and fonts.
+- [Markup](03-markup.qmd): writing content as one string, such as
+  `"{color red}Temp: {string T}"`.
+- [Files and memory](04-files-and-memory.qmd): live values that update without
+  blanking the display.

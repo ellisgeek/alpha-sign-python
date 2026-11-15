@@ -9,6 +9,9 @@ Configuration and scheduling; the clock; tones; reads; and finding Signs on a
 network. Every byte sequence is tested against the worked examples in Alpha's
 protocol manual.
 
+The [documentation](https://ellisgeek.github.io/alpha-sign-python/) has a user
+guide and the API reference.
+
 ## Example
 
 ```python
@@ -120,21 +123,21 @@ answers in turn. Lower `max_address` when the addresses are known to be small.
 ## Status
 
 The library has been run against a real 4120C. What it found, item by item against
-the manual, is in [docs/hardware-results.md](docs/hardware-results.md); the hardware
-checklist in [docs/spec.md](docs/spec.md) lists what still needs confirmation. To
+the manual, is in [docs/hardware-results.md](https://github.com/ellisgeek/alpha-sign-python/blob/main/docs/hardware-results.md); the hardware
+checklist in [docs/spec.md](https://github.com/ellisgeek/alpha-sign-python/blob/main/docs/spec.md) lists what still needs confirmation. To
 run the hardware tests:
 
 ```sh
 ALPHA_SIGN_PORT=/dev/tty.usbserial-1410 uv run pytest -m hardware
 ```
 
-The design, test seams, and open work are in [docs/spec.md](docs/spec.md);
-the domain terms are in [GLOSSARY.md](GLOSSARY.md). See
-[CONTRIBUTING.md](CONTRIBUTING.md) to work on it.
+The design, test seams, and open work are in [docs/spec.md](https://github.com/ellisgeek/alpha-sign-python/blob/main/docs/spec.md);
+the domain terms are in [GLOSSARY.md](https://github.com/ellisgeek/alpha-sign-python/blob/main/GLOSSARY.md). See
+[CONTRIBUTING.md](https://github.com/ellisgeek/alpha-sign-python/blob/main/CONTRIBUTING.md) to work on it.
 
 ## License
 
-MIT; see [LICENSE](LICENSE). The emulator's font data
+MIT; see [LICENSE](https://github.com/ellisgeek/alpha-sign-python/blob/main/LICENSE). The emulator's font data
 (`emulator/src/core/display/manual-glyphs.ts`, and the test images drawn with it) is
 copied from Appendix O of Alpha's protocol manual and is not covered by that license.
 It is not part of the Python package.

@@ -1,10 +1,31 @@
 """Markup: content written as one string, such as ``"{color red}Temp: {string T}"``.
 
-Text is literal except tokens in braces; ``{{`` and ``}}`` are literal braces. A token
-is a kind and its values, separated by spaces. Enum values are spelled as the member
-name in lowercase, without the kind as a prefix (``Speed.SPEED_3`` is ``{speed 3}``),
-so new members need no new spelling. Kinds and values ignore case; File Labels don't.
-See docs/adr/0004-markup-syntax.md.
+Text is literal except for tokens in braces; ``{{`` and ``}}`` are literal braces. A
+token is a kind and its values, separated by spaces. An enum value is spelled as the
+member name in lowercase, without the kind as a prefix: ``Speed.SPEED_3`` is
+``{speed 3}``. Kinds and values ignore case; File Labels don't. Literal text must be
+printable ASCII.
+
+| Token | Segment |
+|---|---|
+| ``{frame MODE [POSITION]}`` | Starts a Frame (see ``parse_markup``) |
+| ``{color NAME}`` | ``Color`` |
+| ``{font NAME}`` | ``Font`` |
+| ``{speed 1}``...``{speed 5}``, ``{speed no_hold}`` | ``Speed`` |
+| ``{spacing proportional}``, ``{spacing fixed_width}`` | ``Spacing`` |
+| ``{wide}``, ``{double_high}`` | ``Wide``, ``DoubleHigh`` |
+| ``{descenders}``, ``{flash}`` | ``TrueDescenders``, ``CharacterFlash`` |
+| ``{attribute NAME [on/off]}`` | ``CharacterAttribute`` |
+| ``{time}``, ``{date [FORMAT]}`` | ``CurrentTime``, ``CurrentDate`` |
+| ``{new_line}``, ``{new_page}`` | ``Control`` |
+| ``{string LABEL}``, ``{picture LABEL}`` | ``StringRef``, ``DotsPictureRef`` |
+| ``{raw HEX}`` | ``RawControl`` |
+
+``{wide}``, ``{double_high}``, ``{descenders}``, ``{flash}``, and ``{attribute ...}``
+take ``on`` (the default) or ``off``. ``{raw HEX}`` holds Control Code bytes the
+library does not model.
+
+The syntax is recorded in docs/adr/0004-markup-syntax.md.
 """
 
 from collections.abc import Callable, Iterator, Sequence
@@ -39,7 +60,17 @@ from alpha_led_sign.protocol.message import Frame, Message, Segment
 
 
 class MarkupError(ValueError):
-    """Markup that can't be read. ``position`` is the offset of the problem in the text."""
+    """Markup that can't be read.
+
+    The message names the problem and the character it is at.
+
+    Args:
+        message: What is wrong.
+        position: The offset of the problem in the markup.
+
+    Attributes:
+        position: The offset of the problem in the markup, counted from 0.
+    """
 
     def __init__(self, message: str, position: int) -> None:
         super().__init__(f"{message} (at character {position})")
@@ -47,14 +78,42 @@ class MarkupError(ValueError):
 
 
 def escape_markup(text: str) -> str:
-    """Make ``text`` literal in markup by doubling its braces, so it can't add tokens."""
+    """Make text literal in markup by doubling its braces.
+
+    Pass any value from outside the program through this before you put it in
+    markup, so that it can't add tokens.
+
+    Args:
+        text: The text to keep literal.
+
+    Returns:
+        The text with each ``{`` and ``}`` doubled.
+
+    Examples:
+        >>> from alpha_led_sign import escape_markup
+        >>> escape_markup("{color red}")
+        '{{color red}}'
+    """
     return text.replace("{", "{{").replace("}", "}}")
 
 
 def parse_segments(text: str) -> tuple[Segment, ...]:
     """Read markup into Segments, as a Frame or a STRING File holds them.
 
-    ``{frame ...}`` is refused: Segments belong to one Frame.
+    Args:
+        text: Markup without ``{frame ...}`` tokens.
+
+    Returns:
+        The literal text and Control Codes, in order.
+
+    Raises:
+        MarkupError: The markup can't be read, or it has a ``{frame}`` token:
+            Segments belong to one Frame.
+
+    Examples:
+        >>> from alpha_led_sign import parse_segments
+        >>> parse_segments("{color red}Hot")
+        (<Color.RED: '1'>, 'Hot')
     """
     segments: list[Segment] = []
     for item in _scan(text):
@@ -73,12 +132,33 @@ type FrameMode = Mode | SpecialMode | SpecialGraphic | None
 def parse_markup(
     text: str, *, mode: FrameMode = Mode.HOLD, position: Position = Position.FILL
 ) -> Message:
-    """Read markup into a Message. ``{frame MODE [POSITION]}`` starts each new Frame.
+    """Read markup into a Message.
 
-    Content before the first ``{frame}`` is a Frame with ``mode`` and ``position``.
-    MODE is a Mode (``rotate``), ``special`` and a Special Mode (``special snow``), or
-    ``graphic`` and a Special Graphic (``graphic fireworks``). A bare ``{frame}`` has
-    no Mode Field, which only the first Frame may lack.
+    Each ``{frame MODE [POSITION]}`` token starts a new Frame. MODE is a Mode
+    (``rotate``), ``special`` and a Special Mode (``special snow``), or ``graphic``
+    and a Special Graphic (``graphic fireworks``). POSITION defaults to ``fill``. A
+    bare ``{frame}`` has no Mode Field, which only the first Frame may lack.
+
+    Args:
+        text: The markup.
+        mode: The Mode of content before the first ``{frame}`` token.
+        position: The Display Position of content before the first ``{frame}``
+            token.
+
+    Returns:
+        The Message, with one Frame for each ``{frame}`` token, plus one for any
+        content before the first.
+
+    Raises:
+        MarkupError: The markup can't be read: an unknown token or value, an
+            unclosed ``{`` or a stray ``}``, a character that is not printable
+            ASCII, or a Frame after the first with no Mode.
+
+    Examples:
+        >>> from alpha_led_sign import parse_markup
+        >>> message = parse_markup("{frame rotate top}Hi{frame hold bottom}{time}")
+        >>> [(frame.mode.name, frame.position.name) for frame in message.frames]
+        [('ROTATE', 'TOP'), ('HOLD', 'BOTTOM')]
     """
     frames: list[tuple[FrameMode, Position, list[Segment], int]] = []
     lead: list[Segment] = []
@@ -133,7 +213,15 @@ class _Token:
 
 
 def _scan(text: str) -> Iterator[str | _Token]:
-    """Split markup into literal text and tokens."""
+    """Split markup into literal text and tokens.
+
+    Yields:
+        Each run of literal text, and each token.
+
+    Raises:
+        MarkupError: A brace is unclosed or stray, a token is empty, or a character
+            is not printable ASCII.
+    """
     literal = ""
     i = 0
     while i < len(text):
@@ -196,7 +284,11 @@ _BARE: dict[str, Segment] = {
 
 
 def _value_name(member: Enum, kind: str) -> str:
-    """How markup spells an enum member: its name in lowercase, without ``kind_``."""
+    """Spell an enum member as markup does.
+
+    Returns:
+        The member's name in lowercase, without ``kind_``.
+    """
     return member.name.lower().removeprefix(f"{kind}_")
 
 
@@ -266,9 +358,22 @@ def _segment(token: _Token) -> Segment:
 
 
 def to_markup(content: Message | Frame | Sequence[Segment]) -> str:
-    """Write content as markup. Reading the result back gives the same content.
+    """Write content as markup.
 
-    Every Frame starts with its ``{frame}`` token, so reading back needs no defaults.
+    Reading the result back with ``parse_markup`` (or ``parse_segments``) gives the
+    same content. Every Frame starts with its ``{frame}`` token, so reading back needs
+    no defaults. A Control Code without a spelling is written as ``{raw HEX}``.
+
+    Args:
+        content: A Message, one Frame, or a sequence of Segments.
+
+    Returns:
+        The markup.
+
+    Examples:
+        >>> from alpha_led_sign import Color, Frame, Mode, Position, to_markup
+        >>> to_markup(Frame(Mode.ROTATE, Position.TOP, [Color.RED, "Hi {there}"]))
+        '{frame rotate top}{color red}Hi {{there}}'
     """
     if isinstance(content, Message):
         return "".join(_render_frame(frame) for frame in content.frames)

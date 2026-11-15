@@ -1,0 +1,68 @@
+---
+title: Pictures
+---
+
+A DOTS PICTURE File holds a small bitmap, up to 31 rows by 255 columns, that a
+TEXT File shows inline with `{picture LABEL}`.
+
+## Draw a picture
+
+`DotsPicture.parse` reads one line per row, one digit per pixel. The digits are the
+manual's pixel codes (p. 40): `0` off, `1` red, `2` green, `3` amber, `4` dim red,
+`5` dim green, `6` brown, `7` orange, and `8` yellow.
+
+```python
+from alpha_led_sign import DotsPicture
+
+arrow = DotsPicture.parse(
+    "0010\n"
+    "0111\n"
+    "1111\n"
+    "0111\n"
+    "0010"
+)
+arrow.height, arrow.width    # (5, 4)
+```
+
+Every row must be as wide as the first. You can also build one from rows of
+`PixelColor` values: `DotsPicture(((PixelColor.RED, PixelColor.OFF), ...))`.
+
+## Send it and show it
+
+The picture needs a File of the same size in the Memory Configuration:
+
+```python
+from alpha_led_sign import DotsPictureFile, TextFile
+
+sign.configure_memory([
+    TextFile("A", size=64),
+    DotsPictureFile("P", rows=5, columns=4),
+])
+sign.write_dots_picture("P", arrow)
+sign.show("Go {picture P}")
+```
+
+The manual says the picture's size must match its File's entry. The library does
+not keep track of the Memory Configuration, so it can't check that for you.
+
+`DotsPictureFile` takes `colors=PictureColors.TRICOLOR` or `EIGHT_COLOR` for a
+File that holds colors. On a 4120C the memory a picture costs does not depend on
+its color depth (see [the memory budget](04-files-and-memory.qmd#the-memory-budget)).
+
+Read a picture back with `sign.read_dots_picture("P")`.
+
+## How a 4120C shows it
+
+These were seen on a real 4120C:
+
+- In `Position.FILL` the picture is drawn at the text cursor, in an 8-row line in
+  the middle of the display, cut to its top 8 rows.
+- In `Position.MIDDLE` all of its rows show, from the top row of the display.
+- All eight colors light, but in three shades: dim red shows as red, dim green as
+  green, and brown, orange, and yellow as amber.
+
+## Checks
+
+The library warns, or raises with `strict=True`, when the Sign Model has no
+graphics, when the picture is larger than the model's display, and when a red-only
+model is sent a pixel other than off or red.

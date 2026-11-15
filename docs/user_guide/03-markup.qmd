@@ -1,0 +1,110 @@
+---
+title: Markup
+---
+
+Markup writes a Message, or a list of Segments, as one string: literal text, with
+Control Codes and Frames as tokens in braces.
+
+```python
+sign.write_text("A", "{frame rotate top}{color red}Temp: {string T}"
+                     "{frame hold bottom}{color green}{time}")
+```
+
+`Sign.show`, `Sign.write_text`, `Sign.write_string`, and `Sign.priority` read a
+`str` argument as markup. Markup is only a second way to write the content model,
+so anything you can build from `Frame`, `Color`, and the rest has a markup form,
+and the reverse.
+
+## Tokens
+
+A token is a kind and its values, separated by spaces. An enum value is written as
+the member's name in lowercase, without the kind as a prefix: `Speed.SPEED_3` is
+`{speed 3}` and `DateFormat.MMM_DD_YYYY` is `{date mmm_dd_yyyy}`. Kinds and values
+ignore case; File Labels don't, because `a` and `A` are different Files.
+
+| Token | Example | Means |
+|---|---|---|
+| `{frame MODE [POSITION]}` | `{frame rotate top}` | Start a Frame. POSITION defaults to `fill`. |
+| `{frame special NAME [POSITION]}` | `{frame special snow}` | Start a Frame with a Special Mode. |
+| `{frame graphic NAME [POSITION]}` | `{frame graphic fireworks}` | Start a Frame with a Special Graphic. |
+| `{color NAME}` | `{color amber}` | `Color` |
+| `{font NAME}` | `{font seven_high}` | `Font` |
+| `{speed N}` | `{speed 3}`, `{speed no_hold}` | `Speed` |
+| `{spacing NAME}` | `{spacing fixed_width}` | `Spacing` |
+| `{wide [on/off]}` | `{wide}`, `{wide off}` | `Wide` |
+| `{double_high [on/off]}` | `{double_high}` | `DoubleHigh` |
+| `{descenders [on/off]}` | `{descenders}` | `TrueDescenders` |
+| `{flash [on/off]}` | `{flash}` | `CharacterFlash` |
+| `{attribute NAME [on/off]}` | `{attribute fancy on}` | `CharacterAttribute` |
+| `{time}` | `{time}` | `CurrentTime` |
+| `{date [FORMAT]}` | `{date mmm_dd_yyyy}` | `CurrentDate` |
+| `{new_line}`, `{new_page}` | `{new_line}` | `Control` |
+| `{string LABEL}` | `{string T}` | `StringRef` |
+| `{picture LABEL}` | `{picture P}` | `DotsPictureRef` |
+| `{raw HEX}` | `{raw 1F41}` | `RawControl`: bytes the library does not model |
+
+An on/off token without a value means `on`. A bare `{frame}` starts a Frame with no
+Mode Field, so the Sign picks how to show it; only the first Frame may have one.
+
+## Frames
+
+Each `{frame ...}` starts a new Frame. Text before the first one goes in a Frame
+with the default Mode and Display Position: `show` takes them from its `mode` and
+`position` arguments, and the other methods use HOLD and FILL.
+
+```python
+sign.show("Hello", mode=Mode.ROTATE)               # one ROTATE Frame
+sign.show("Hello{frame flash}World")               # HOLD, then FLASH
+```
+
+`write_string` takes Segments only, so a `{frame}` token there is an error.
+
+## Literal braces and outside text
+
+`{{` and `}}` are literal braces. Text from outside the program, such as a
+reading or a headline, may contain braces, so pass it through `escape_markup`
+before you put it in markup:
+
+```python
+from alpha_led_sign import escape_markup
+
+sign.write_string("T", escape_markup(headline))
+sign.show("{color red}" + escape_markup(headline))
+```
+
+A string inside a list of Segments is always literal, which is another way to keep
+outside text safe:
+
+```python
+sign.show([Color.RED, headline])
+```
+
+## Converting both ways
+
+The functions behind the `Sign` methods are public:
+
+```python
+from alpha_led_sign import parse_markup, parse_segments, to_markup
+
+message = parse_markup("{frame rotate top}Hi{frame hold bottom}{time}")
+segments = parse_segments("{color red}Hot")      # (Color.RED, 'Hot')
+text = to_markup(message)
+```
+
+`to_markup` starts every Frame with its `{frame}` token, so reading its output back
+gives the same content with no defaults. That makes markup a good format for
+content kept in a configuration file.
+
+## Errors
+
+Markup that can't be read raises `MarkupError`, a `ValueError`. Its `position`
+attribute is the offset of the problem, and the message names the character:
+
+```python
+parse_segments("{colour red}")
+# MarkupError: unknown token {colour} (at character 0)
+```
+
+Unknown tokens, unknown values, an unclosed `{`, a stray `}`, and characters that
+are not printable ASCII are all errors. A newline in markup is an error too; write
+`{new_line}`.

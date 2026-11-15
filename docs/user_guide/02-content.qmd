@@ -1,0 +1,135 @@
+---
+title: Content
+---
+
+What a TEXT File shows is a Message: one or more Frames, shown one after
+another. Each Frame has a Mode, a Display Position, and its content. The
+content is a list of Segments: strings of literal text, and Control Codes
+that change how the text after them looks or insert a live value.
+
+```python
+from alpha_led_sign import Color, CurrentTime, Frame, Message, Mode, Position
+
+message = Message(
+    Frame(Mode.ROTATE, Position.TOP, [Color.RED, "Doors open at 7"]),
+    Frame(Mode.HOLD, Position.BOTTOM, [Color.GREEN, CurrentTime()]),
+)
+sign.write_text("A", message)
+```
+
+The same Message can be written as [markup](03-markup.qmd):
+
+```python
+sign.write_text("A", "{frame rotate top}{color red}Doors open at 7"
+                     "{frame hold bottom}{color green}{time}")
+```
+
+Use whichever reads better. Markup is shorter for fixed text. Segments are safer
+for text from outside the program, because a string in a list of Segments is
+always literal.
+
+## Modes
+
+The Mode says how a Frame comes onto the display: `Mode.ROTATE` moves it across,
+`Mode.HOLD` keeps it still, and `Mode.FLASH` flashes it. The `ROLL_*` and `WIPE_*`
+Modes replace the old text in the direction their name gives. `Mode.AUTOMODE` lets
+the Sign choose.
+
+Two more enums add Modes the manual lists separately:
+
+- `SpecialMode`: effects such as `TWINKLE`, `SNOW`, `SPARKLE`, `SLIDE`, and the
+  `WELCOME` and `SLOT_MACHINE` animations.
+- `SpecialGraphic`: built-in animations such as `FIREWORKS` and `THANK_YOU`. A
+  Frame with a Special Graphic can't show text, so put the text in the next Frame.
+
+```python
+from alpha_led_sign import SpecialGraphic, SpecialMode
+
+Message(
+    Frame(SpecialGraphic.FIREWORKS),
+    Frame(SpecialMode.SNOW, Position.FILL, ["Happy new year"]),
+)
+```
+
+`Mode.EXPLODE` and `Mode.CLOCK` need Alpha 3.0, which the 4000 Series does not
+have. The library warns before it sends them to a model that lacks them.
+
+## Display Positions
+
+A two-line Sign such as the 4120C shows a Frame on `Position.TOP`,
+`Position.BOTTOM`, `Position.MIDDLE`, or `Position.FILL` (the default). On a
+one-line Sign every position shows on the one line.
+
+Fonts taller than 7 rows (`Font.TEN_HIGH`, `Font.FULL_HEIGHT`, and
+`Font.FULL_HEIGHT_FANCY`) show at full height only in `Position.MIDDLE`. In the
+other positions a two-line Sign draws them 7 rows high, and the library warns:
+
+```python
+sign.show("{font full_height}BIG", position=Position.MIDDLE)
+```
+
+## Control Codes
+
+A Control Code applies to the text after it, until another Control Code of the
+same kind replaces it.
+
+| To change | Use | Markup |
+|---|---|---|
+| Color | `Color.RED`, `Color.AMBER`, `Color.RAINBOW_1`, ... | `{color red}` |
+| Font | `Font.SEVEN_HIGH`, `Font.FIVE_HIGH`, ... | `{font seven_high}` |
+| Speed | `Speed.SPEED_1` (slowest) to `Speed.SPEED_5` | `{speed 1}` |
+| Character width | `Wide()`, `Wide(False)` | `{wide on}`, `{wide off}` |
+| Flashing | `CharacterFlash()` | `{flash on}` |
+| Spacing | `Spacing.FIXED_WIDTH`, `Spacing.PROPORTIONAL` | `{spacing fixed_width}` |
+| Other attributes | `CharacterAttribute(Attribute.FANCY, True)` | `{attribute fancy on}` |
+| Line break | `Control.NEW_LINE` | `{new_line}` |
+
+Literal text must be printable ASCII. A newline in a string is an error; use
+`Control.NEW_LINE` instead.
+
+These insert a value the Sign keeps up to date:
+
+| Shows | Use | Markup |
+|---|---|---|
+| The time | `CurrentTime()` | `{time}` |
+| The date | `CurrentDate(DateFormat.MMM_DD_YYYY)` | `{date mmm_dd_yyyy}` |
+| A STRING File's content | `StringRef("T")` | `{string T}` |
+| A DOTS PICTURE File | `DotsPictureRef("P")` | `{picture P}` |
+
+The time and date come from the Sign's own clock; see
+[Scheduling, clock, and sound](06-scheduling-clock-sound.qmd). STRING Files are
+the way to show values that change; see [Files and memory](04-files-and-memory.qmd).
+
+Not every Sign Model has every Control Code. A red-only "R" model has no colors,
+and the 4000 Series has no double-height characters or new pages. The library
+warns before it sends one of those to a model that lacks it.
+
+## Shortcuts
+
+`Sign.show` builds a one-Frame Message for you and writes it to TEXT File `A`:
+
+```python
+sign.show("Hello")
+sign.show("Hello", mode=Mode.ROTATE, position=Position.TOP)
+sign.show([Color.AMBER, "Hello"])
+```
+
+Pass `label=` to write a TEXT File other than `A`. That File must exist in the
+Memory Configuration first.
+
+`Sign.write_text` takes a Message, a single Frame, or markup.
+
+## Reading content back
+
+`Sign.read_text` returns the Message a TEXT File holds, and `to_markup` writes it
+as markup:
+
+```python
+from alpha_led_sign import to_markup
+
+print(to_markup(sign.read_text("A")))
+# {frame rotate top}{color red}Doors open at 7{frame hold bottom}{color green}{time}
+```
+
+A Control Code the library does not model comes back as a `RawControl` with its
+bytes, written `{raw ...}` in markup, so the content can be written back unchanged.

@@ -87,11 +87,46 @@ raw commands.
 - `alpha_led_sign.protocol` has no I/O and no clock. A pause the protocol needs is
   part of the encoded `Packet`, so tests check it without sleeping.
 
+## Documentation
+
+The documentation site is built with [great-docs](https://posit-dev.github.io/great-docs/)
+from two sources:
+
+- The API reference comes from the docstrings in `src/`. They are Google style,
+  and every public module, class, function, and method has one, with `Args`,
+  `Returns`, `Yields`, and `Raises` sections that match the code. Ruff checks this
+  (the `D`, `DOC`, and `ANN` rules in `pyproject.toml`). An `>>>` example in a
+  docstring is a doctest that `uv run pytest` runs; an example that needs a Sign
+  goes in a fenced code block instead.
+- The user guide is the `.qmd` pages in `docs/user_guide/`, in the order of their
+  number prefixes.
+
+`great-docs.yml` lists what the reference shows, section by section. A new public
+name goes there too. To build and view the site:
+
+```sh
+uv run --group docs great-docs build     # writes great-docs/_site/
+uv run --group docs great-docs preview
+```
+
+The `docs` dependency group includes Quarto, so nothing needs a system install.
+The first `uv run --group docs` installs it.
+
 ## Git workflow
 
 - Make real changes on a branch and open a pull request. Do not push to `main`
   directly. Merge pull requests with a regular merge commit, never a squash or
-  rebase merge: the individual commits feed the changelog.
+  rebase merge: the individual commits feed the changelog. A local
+  `git merge --no-ff` takes the subject `refactor: merge branch '<name>'`,
+  because the `commit-msg` hook rejects git's default `Merge branch ...`.
+- Use `gh pr merge --delete-branch` only on a pull request whose branch is no
+  other pull request's base: GitHub closes the dependent pull request instead
+  of retargeting it.
+- A finished multi-branch effort may be squashed into one commit on `main`
+  when the maintainer asks for it. Keep `backup/<effort>-before-squash` at the
+  integration branch's tip, `git merge --squash`, write one user-facing `feat:`
+  subject (it is the effort's only changelog line), check the tree matches the
+  backup, then delete the merged branches.
 - Commit messages are Conventional Commits with Angular's types only: `build`,
   `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `test`. There is no `style`
   or `chore`; formatting-only changes are `refactor`. A prek `commit-msg` hook
@@ -118,7 +153,7 @@ raw commands.
 Releases use [Semantic Versioning](https://semver.org/), `MAJOR.MINOR.PATCH`
 (for example `0.1.0`), with no `v` prefix on tags. Before 1.0, a breaking change
 bumps the minor number and anything else the patch. See
-[ADR 0001](docs/adr/0001-semantic-versioning.md).
+[ADR 0001](https://github.com/ellisgeek/alpha-sign-python/blob/main/docs/adr/0001-semantic-versioning.md).
 
 To cut a release, run `scripts/release.sh` on a clean `main`:
 

@@ -11,7 +11,9 @@ manual). Stories and decisions marked **(waits for hardware)** are covered by
 Status (November 2026): the library covers Alpha 1.0 Packet framing, TEXT, STRING,
 and SMALL DOTS PICTURE Files, Sign Models and the memory budget, special functions and scheduling, the serial
 Transport, `Sign`, reads, and discovery. All of it passes offline. Every hardware
-checklist item has a test, but none has run against a real **Sign** yet.
+checklist item has a test; what a real 4120C did is in
+[hardware-results.md](hardware-results.md), and [Remaining work](#remaining-work) lists
+what is left.
 
 ## Problem Statement
 
@@ -328,11 +330,15 @@ from a real Sign.
   small value object is a Control Code. **Markup** is a second spelling of the same
   model ([ADR 0004](adr/0004-markup-syntax.md)): `Sign` methods read a `str` argument
   as markup, and the protocol types never do.
+- Rules shared by several Commands live in one place: the lock byte of a Memory
+  Configuration entry and of a Run Sequence comes from one helper, and Sign Addresses
+  have one check (see [Sign Addresses](#sign-addresses)). A File Label type is not
+  planned: every path already checks labels, and a NewType adds no runtime check.
 
 ### Extensibility rules
 
-These keep the library open to other Series and Sign Models. Nothing may be specific
-to one Sign Model.
+These keep the library open to other Series and Sign Models: everything that differs
+between Sign Models lives in Sign Model data.
 
 1. **A Sign Model is data.** It is a frozen record: name, Sign Type, Series, columns,
    rows, lines, memory bytes, maximum messages, accepted Protocol Versions, and
@@ -466,6 +472,21 @@ to one Sign Model.
 - The size must match the File's Memory Configuration entry (p. 39). `Sign` does not
   track the configuration, so this is not checked.
 
+### Memory budget
+
+- A STRING File of size 0, or a TEXT File of size 0 that is not last, raises
+  `ValueError` (p. 27, note 1: size 0 is valid only for a last TEXT File).
+- The budget counts TEXT and STRING sizes plus a per-File overhead for every File,
+  DOTS PICTURE Files included. The overhead is a `SignModel` field, default 11 bytes
+  (p. 27, note 1; readerboard reports 13, a 4120C measured 11).
+- Two more `SignModel` fields default to the manual and hold what hardware showed:
+  `memory_reserved` (bytes the Sign keeps back; 9 on the 4120C) and
+  `dots_picture_planes` (`None` leaves DOTS PICTURE sizes out, as note 1 says; with
+  a value, a picture costs 2 + rows x planes x ceil(columns / 8); 2 on the 4120C).
+- `SignModel.memory_needed` gives the total. The check is skipped when the memory
+  size is unknown. An overflow is `UnsupportedCapability` in strict mode and a
+  warning otherwise.
+
 ### Read behavior
 
 These rules live in `ResponseMatcher` (`protocol/matching.py`), which is pure: `Sign`
@@ -484,6 +505,22 @@ without parsing it. Response types, decoding, and the reader are in
   Sign answers.
 - A Response that fails to decode always raises. It is never skipped.
 
+### Sign Addresses
+
+- One Sign Address check, in its own protocol module (next to Recipient would make
+  an import cycle), is used by Recipient, the address Command, and discovery.
+- `set_sign_address` refuses address 0 or a `?` pattern (both reach more than one
+  Sign) unless the caller passes `broadcast=True`: sent to broadcast, it would give
+  every Sign on the line the same address. The refusal sends nothing. After sending,
+  `Sign` addresses the new Sign Address.
+- `query`, and so every read, refuses address 0 or a `?` pattern unless the `Sign`
+  was made with `broadcast_reads=True`: every matching Sign answers, and their
+  answers collide. The refusal sends nothing. Discovery does not go through `query`.
+- Lookup by Sign Type (a model only when exactly one has that Sign Type) lives in the
+  models module, and a discovered Sign uses it. `DiscoveredSign` and the protocol's
+  Network Query answer stay separate types, because the protocol layer can't import
+  the models.
+
 ### Errors
 
 | Error | When |
@@ -501,37 +538,6 @@ for some Signs, from tables with known gaps) goes through validation and is advi
 by default. The name `UnsupportedCapability` has no `Error` suffix; it is part of the
 public interface. A wider base class (such as `ValidationError`) would be a separate
 change.
-
-### Rules added after review
-
-- A STRING File of size 0, or a TEXT File of size 0 that is not last, raises
-  `ValueError` (p. 27, note 1: size 0 is valid only for a last TEXT File).
-- `SignModel` has a per-File overhead field, default 11 bytes (p. 27, note 1;
-  readerboard reports 13, a 4120C measured 11). The memory budget counts TEXT and
-  STRING sizes plus the overhead for every File, DOTS PICTURE Files included. Two
-  more fields default to the manual and hold what hardware showed:
-  `memory_reserved` (bytes the Sign keeps back; 9 on the 4120C) and
-  `dots_picture_planes` (`None` leaves DOTS PICTURE sizes out, as note 1 says; with
-  a value, a picture costs 2 + rows x planes x ceil(columns / 8); 2 on the 4120C).
-  `SignModel.memory_needed` gives the total. The check is skipped when the memory
-  size is unknown. An overflow is `UnsupportedCapability` in strict mode and a
-  warning otherwise.
-- `set_sign_address` refuses address 0 or a `?` pattern (both reach more than one
-  Sign) unless the caller passes `broadcast=True`:
-  sent to broadcast, it would give every Sign on the line the same address. The
-  refusal sends nothing. After sending, `Sign` addresses the new Sign Address.
-- `query`, and so every read, refuses address 0 or a `?` pattern unless the `Sign`
-  was made with `broadcast_reads=True`: every matching Sign answers, and their
-  answers collide. The refusal sends nothing. Discovery does not go through `query`.
-- One Sign Address check, in its own protocol module (next to Recipient would make
-  an import cycle), is used by Recipient, the address
-  Command, and discovery. Lookup by Sign Type (a model only when exactly one has that
-  Sign Type) lives in the models module, and the discovered Sign uses it.
-- The lock byte of a Memory Configuration entry and of a Run Sequence comes from one
-  helper.
-- `DiscoveredSign` and the protocol's Network Query answer stay separate types,
-  because the protocol layer can't import the models. A File Label type is not
-  planned: every path already checks labels, and a NewType adds no runtime check.
 
 ### Versioning
 
@@ -652,8 +658,8 @@ manual brings in a model field or, for a Capability, the overrides field
 
 Everything left needs a real Sign. Delete each item when it is done.
 
-- Pauses in a nested Packet (hardware checklist): write the test and run it on a
-  4120C, then keep or fix how `encode_packet` drops an earlier Command's pause.
+- Pauses in a nested Packet (hardware checklist): write the test, run it on a
+  4120C, and settle the open question below.
 
 New hardware findings go in [hardware-results.md](hardware-results.md).
 
