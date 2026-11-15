@@ -100,32 +100,120 @@ describe("Clear Memory and Soft Reset", () => {
 });
 
 describe("Memory Pool (F#, p. 30; POOL,pool as p. 29)", () => {
-  // 4120C pool: 28,000 bytes (brochure p. 2) = 6D60H.
-  // Table 55 uses 256 (TEXT A) + 10 (STRING l) + 3 x overhead.
-  it("counts 11 bytes of overhead per File and no DOTS PICTURE by default (p. 27, note 1)", () => {
+  // Every expected figure here is what a real 4120C reported (docs/hardware-results.md,
+  // "Memory Configuration limit"). Pool: 28,872 bytes = 70C8H. The Sign keeps 9 bytes
+  // back, gives unused memory to a first-listed TEXT File (p. 29, "#"), and reports
+  // as free the room that File has, less 5 bytes.
+  const hex = (n: number, width: number) => n.toString(16).toUpperCase().padStart(width, "0");
+  const text = (label: string, size: number) => `${label}AU${hex(size, 4)}FF00`;
+  const string = (label: string, size: number) => `${label}BL${hex(size, 4)}0000`;
+  const dots = (label: string, rows: number, columns: number) =>
+    `${label}DU${hex(rows, 2)}${hex(columns, 2)}1000`;
+  const configure = (send: (packet: string) => void, entries: string) =>
+    send(`${SYNC}\x01Z00\x02E$${entries}\x04`);
+  const free = (read: (label: string) => string) => Number.parseInt(read("#").slice(5), 16);
+
+  it("reports 28,847 free with File A alone, whatever its size", () => {
+    for (const size of [0, 1, 256, 28_852]) {
+      const { send, read } = oneSign();
+      configure(send, text("A", size));
+      expect(free(read)).toBe(28_847);
+    }
+  });
+
+  it("reports 28,847 free at power-up", () => {
+    const { read } = oneSign();
+    expect(read("#")).toBe("70C8,70AF");
+  });
+
+  it("counts another File's size and 11 bytes of overhead, but not the first TEXT File's size", () => {
+    for (const entries of [
+      text("A", 100) + text("B", 100),
+      text("A", 1000) + text("B", 100),
+      text("B", 100) + text("A", 100),
+      text("B", 1000) + text("A", 100),
+    ]) {
+      const { send, read } = oneSign();
+      configure(send, entries);
+      expect(free(read)).toBe(28_736);
+    }
+  });
+
+  it("gives a last TEXT File of size 0 the unused memory instead (p. 27, note 1)", () => {
     const { send, read } = oneSign();
-    send(TABLE_55);
-    // 28000 - 256 - 10 - 3 x 11 = 27701 = 6C35H.
-    expect(read("#")).toBe("6D60,6C35");
+    configure(send, text("A", 256) + text("B", 0));
+    expect(free(read)).toBe(251);
+    configure(send, text("A", 100) + text("B", 100) + text("C", 0));
+    expect(free(read)).toBe(95);
+  });
+
+  it("gives unused memory to no File when the first File listed is not a TEXT File", () => {
+    const { send, read } = oneSign();
+    configure(send, string("T", 100) + text("A", 100));
+    expect(free(read)).toBe(95);
+  });
+
+  it("counts a DOTS PICTURE as 2 + rows x 2 x ceil(columns / 8) bytes plus overhead", () => {
+    const sizes: [number, number, number][] = [
+      [16, 16, 77],
+      [8, 8, 29],
+      [16, 120, 493],
+      [1, 1, 15],
+      [3, 3, 19],
+      [1, 17, 19],
+    ];
+    for (const [rows, columns, bytes] of sizes) {
+      const { send, read } = oneSign();
+      configure(send, text("A", 256) + dots("P", rows, columns));
+      expect(free(read)).toBe(28_847 - bytes);
+    }
+  });
+
+  it("gives a 0x0 DOTS PICTURE the unused memory, like a last TEXT File of size 0", () => {
+    const { send, read } = oneSign();
+    configure(send, text("A", 256) + dots("P", 0, 0));
+    expect(free(read)).toBe(251);
+  });
+
+  it("counts only overhead for a DOTS PICTURE with Reading dotsPictureCounted false (p. 27, note 1)", () => {
+    const { send, read } = oneSign({ dotsPictureCounted: false });
+    configure(send, text("A", 256) + dots("P", 16, 16));
+    expect(free(read)).toBe(28_847 - 11);
   });
 
   it("uses Reading perFileOverhead = 13", () => {
     const { send, read } = oneSign({ perFileOverhead: 13 });
-    send(TABLE_55);
-    // 28000 - 256 - 10 - 3 x 13 = 27695 = 6C2FH.
-    expect(read("#")).toBe("6D60,6C2F");
+    configure(send, text("A", 100) + text("B", 100));
+    expect(free(read)).toBe(28_872 - 9 - 2 * 13 - 100 - 5);
   });
+});
 
-  it("counts the DOTS PICTURE as rows x columns with Reading dotsPictureCounted (PROVISIONAL)", () => {
-    const { send, read } = oneSign({ dotsPictureCounted: true });
-    send(TABLE_55);
-    // 27701 - 7 x 60 = 27281 = 6A91H.
-    expect(read("#")).toBe("6D60,6A91");
-  });
+describe("Memory Configuration limit", () => {
+  // The largest File A a real 4120C took beside one other File (docs/hardware-results.md).
+  const cases: [string, number, string][] = [
+    ["TEXT B of 100", 28_741, "BAU0064FF00"],
+    ["STRING T of 100", 28_741, "TBL00640000"],
+    ["a 16x16 DOTS PICTURE", 28_775, "PDU10101000"],
+    ["a 16x120 DOTS PICTURE", 28_359, "PDU10781000"],
+  ];
+  const fileA = (size: number) => `AAU${size.toString(16).toUpperCase().padStart(4, "0")}FF00`;
 
-  it("gives power-up File A only its overhead (PROVISIONAL: its size is not in the manual)", () => {
-    const { read } = oneSign();
-    // 28000 - 11 = 27989 = 6D55H.
-    expect(read("#")).toBe("6D60,6D55");
+  for (const [other, largest, entry] of cases) {
+    it(`takes File A of ${largest} bytes beside ${other}, and refuses one more`, () => {
+      const { sign, send } = oneSign();
+      send(`${SYNC}\x01Z00\x02E$${fileA(largest)}${entry}\x04`);
+      expect(sign.snapshot().memoryConfiguration).toHaveLength(2);
+
+      send(`${SYNC}\x01Z00\x02E$\x04`);
+      send(`${SYNC}\x01Z00\x02E$${fileA(largest + 1)}${entry}\x04`);
+      expect(sign.snapshot().memoryConfiguration).toHaveLength(1);
+    });
+  }
+
+  it("keeps the old Files and their content when it refuses a Memory Configuration", () => {
+    const { sign, send } = oneSign();
+    send(`${SYNC}\x01Z00\x02AAHELLO\x04`);
+    send(`${SYNC}\x01Z00\x02E$${fileA(28_742)}BAU0064FF00\x04`);
+    expect(sign.snapshot().files).toEqual({ A: { label: "A", type: "TEXT", data: "HELLO" } });
   });
 });

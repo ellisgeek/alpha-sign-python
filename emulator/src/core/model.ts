@@ -28,6 +28,12 @@ export interface EmulatorModel {
   palette: PaletteColor[];
   /** Memory Pool size in bytes. */
   memoryBytes: number;
+  /** Bytes of the pool no Memory Configuration can use. The manual names none. */
+  memoryReserved: number;
+  /** How far General Information's free memory falls short of the first TEXT File's room. */
+  freeShortfall: number;
+  /** NULs before a Response's SOH. Table 14 shows 20. */
+  responseNuls: number;
   maxMessages: number;
   protocolVersions: ProtocolVersion[];
   /** General Information firmware fields (p. 29): FFFFFFFF, f, MmYy. */
@@ -55,11 +61,17 @@ export const RED_PALETTE: PaletteColor[] = [OFF, { name: "red", rgb: "#ff2a1a" }
 /**
  * Alpha 4120C.
  * - Type Code "a" (Table 5, p. 10).
- * - 120 x 16 pixels, 28,000 bytes display memory, 81 messages, tricolor,
- *   one- or two-line messages (brochure, p. 2 "4120C/R" column and p. 1).
+ * - 120 x 16 pixels, 81 messages, tricolor, one- or two-line messages
+ *   (brochure, p. 2 "4120C/R" column and p. 1).
+ * - 28,872 bytes of memory, as a real 4120C reported in General Information
+ *   (docs/hardware-results.md). The brochure says 28,000. It keeps 9 bytes back,
+ *   and reports 5 bytes less free than File A's room (same source).
+ * - 26 NULs before each Response, in every capture from a real 4120C (same source).
+ *   Table 14 shows 20.
  * - EZKEY II and Alpha 1.0, not 2.0 or 3.0 (Table 3, p. 8, "4000 Series").
- * - Firmware fields are invented for the Emulator: no 4120C General Information
- *   capture exists yet (docs/hardware-results.md). PROVISIONAL.
+ * - Firmware fields are invented for the Emulator, so that no one takes an
+ *   Emulator capture for a real Sign's. A real one reported 10184403, O, 1206
+ *   (docs/hardware-results.md).
  */
 export const model4120C: EmulatorModel = {
   name: "4120C",
@@ -68,7 +80,10 @@ export const model4120C: EmulatorModel = {
   rows: 16,
   lines: 2,
   palette: TRICOLOR_PALETTE,
-  memoryBytes: 28000,
+  memoryBytes: 28872,
+  memoryReserved: 9,
+  freeShortfall: 5,
+  responseNuls: 26,
   maxMessages: 81,
   protocolVersions: ["EZKEY II", "Alpha 1.0"],
   firmware: { name: "EMU4120C", revision: "A", date: "1126" },

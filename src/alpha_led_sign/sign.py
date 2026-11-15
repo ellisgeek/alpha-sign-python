@@ -70,6 +70,7 @@ class Sign:
         strict: bool = False,
         checksum: bool = True,
         read_timeout: float = DEFAULT_READ_TIMEOUT,
+        broadcast_reads: bool = False,
     ) -> None:
         self.transport = transport
         self.read_timeout = read_timeout
@@ -77,6 +78,9 @@ class Sign:
         self.recipient = Recipient(model.sign_type, address)
         self.strict = strict
         self.checksum = checksum
+        self.broadcast_reads = broadcast_reads
+        """Send reads to Sign Address 0 or a ``?`` pattern. Every matching Sign answers,
+        so set it only when exactly one Sign is on the line."""
         self._reader = ResponseReader()
         self._unanswered = 0  # Reads sent whose Response has not arrived yet
 
@@ -92,6 +96,7 @@ class Sign:
         strict: bool = False,
         checksum: bool = True,
         read_timeout: float = DEFAULT_READ_TIMEOUT,
+        broadcast_reads: bool = False,
     ) -> "Sign":
         """Open a Sign on a serial port (or any pyserial URL, such as ``loop://``)."""
         transport = SerialTransport(url, baudrate=baudrate, serial_format=serial_format)
@@ -102,6 +107,7 @@ class Sign:
             strict=strict,
             checksum=checksum,
             read_timeout=read_timeout,
+            broadcast_reads=broadcast_reads,
         )
 
     def __enter__(self) -> Self:
@@ -256,12 +262,19 @@ class Sign:
     def query[T](self, read: Read[T]) -> T:
         """Send one Read Command and parse the Sign's Response.
 
-        Use one Sign Address per Sign: only the addressed Sign may answer. Anything
-        received before the Read is sent is discarded. After that, a Response to some
+        Only the addressed Sign may answer, so a Read to Sign Address 0 or a ``?``
+        pattern is refused unless ``broadcast_reads`` is set. Anything received before
+        the Read is sent is discarded. After that, a Response to some
         other Read (a late answer to one that timed out) is skipped, but only as many
         as there are unanswered Reads. A late answer to the same kind of Read can't be
         told apart from the real one, so it is taken as the answer.
         """
+        if self.recipient.reaches_several and not self.broadcast_reads:
+            raise ValueError(
+                f"Sign Address {self.recipient.address!r} reaches every matching Sign, and "
+                "their answers would collide; address one Sign (discover() finds them), or "
+                "pass broadcast_reads=True when only one Sign is on the line"
+            )
         self._discard_received()
         began_earlier = bool(self._reader.pending.strip(b"\x00"))
         self.send(read)

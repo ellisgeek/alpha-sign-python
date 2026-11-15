@@ -1,6 +1,6 @@
 // Write and read SPECIAL FUNCTION (pp. 21-36), with the Appendix F Packets.
 import { describe, expect, it } from "vitest";
-import { bytes, oneSign, SYNC } from "./helpers";
+import { bytes, NULS_4120C, oneSign, SYNC } from "./helpers";
 
 const E = (data: string) => `${SYNC}\x01Z00\x02E${data}\x04`;
 const W = (data: string) => `${SYNC}\x01Z00\x02A${data}\x04`;
@@ -27,9 +27,7 @@ describe("time, date, and day", () => {
   it("answers Table 53 with the Table 54 bytes on a Friday (pp. 69-70)", () => {
     const { send } = oneSign({}, 4);
     send(E("&6"));
-    expect(send(`${SYNC}\x01Z04\x02F&\x04`)).toEqual([
-      `${"\x00".repeat(20)}\x01000\x02E&6\x0300A6\x04`,
-    ]);
+    expect(send(`${SYNC}\x01Z04\x02F&\x04`)).toEqual([`${NULS_4120C}\x01000\x02E&6\x0300A6\x04`]);
   });
 
   it("moves the day set with E& on at midnight (p. 22)", () => {
@@ -196,8 +194,9 @@ describe("Read General Information (p. 29)", () => {
     expect(data?.slice(13, 17)).toBe("1430"); // HhNn time of day, 24-hour
     expect(data?.slice(17, 18)).toBe("S"); // R time format (default)
     expect(data?.slice(18, 20)).toBe("FF"); // SS speaker disabled (default)
-    // POOL,pool: 28,000 = 6D60H; power-up File A's 11 bytes of overhead leave 6D55H.
-    expect(data?.slice(20)).toBe("6D60,6D55");
+    // POOL,pool: 28,872 = 70C8H total and 28,847 = 70AFH free, as a real 4120C reported
+    // with File A alone (docs/hardware-results.md).
+    expect(data?.slice(20)).toBe("70C8,70AF");
   });
 
   it("leads with a NUL under Reading generalInfoLength = 29+NUL", () => {

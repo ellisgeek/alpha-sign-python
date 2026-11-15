@@ -10,13 +10,18 @@ Set `ALPHA_SIGN_CAPTURE=<path>` to keep the bytes as test vectors.
 
 | Item | What the manual says | What the 4120C did | Firmware | Date |
 |---|---|---|---|---|
-| Network Query answers | Only the `UAAZ` data (p. 32). | Not yet run. | | |
-| General Information length | 28 or 29 characters; the field list adds up to 29 plus an optional NUL (p. 29). | Not yet run. | | |
+| Network Query answers | Only the `UAAZ` data (p. 32). | Answered as a Response Packet, parsed as `E-UAAZ`, with its own Sign Address (1), not the broadcast address 0. It also answered after being moved to a second Sign Address. | 10184403 rev O (1206) | 2026-11-15 |
+| General Information length | 28 or 29 characters; the field list adds up to 29 plus an optional NUL (p. 29). | 29 characters, no NUL (`10184403O12060058S0070C8,705D`). | 10184403 rev O (1206) | 2026-11-15 |
 | Programmable tone repeats | `R` is the repeat count; it does not say whether the first play counts (p. 22). | Not yet run. | | |
-| NEWS FLASH and TRUMPET | `"A"`/`"B"`, with hex 3AH/3BH beside them (Table 66). | Not yet run. | | |
-| NEW_PAGE on the 4000 Series | Not listed (Table 69). | Not yet run. | | |
-| Double height on the 4000 Series | Not listed (Table 70). | Not yet run. | | |
-| Two-digit year on Alpha 1.0 | The 1997-2096 window is given for Alpha 2.0 and later only (p. 28, note 15). | Not yet run. | | |
-| Per-File overhead | 11 bytes per File (p. 27, note 1). [readerboard](https://github.com/mjaksn/readerboard) reports 13. | Not yet run. | | |
-| DOTS PICTURE File in the memory budget | Its size is left out of the sum (p. 27, note 1). | Not yet run. | | |
-| Total memory | 28,000 bytes (Table 5, brochure). | Not yet run. | | |
+| NEWS FLASH and TRUMPET | `"A"`/`"B"`, with hex 3AH/3BH beside them (Table 66). Appendix G limits them to the BetaBrite 1036. | Neither form plays either one, as its profile expects. Which form a BetaBrite 1036 wants is not known; no test of one is planned, and the library keeps the letters. | 10184403 rev O (1206) | 2026-11-15 |
+| NEW_PAGE on the 4000 Series | Not listed (Table 69). | Not supported: PAGE TWO did not replace PAGE ONE as a new page. | 10184403 rev O (1206) | 2026-11-15 |
+| Double height on the 4000 Series | Not listed (Table 70). | Not supported: TALL was shown at normal height. | 10184403 rev O (1206) | 2026-11-15 |
+| Two-digit year on Alpha 1.0 | The 1997-2096 window is given for Alpha 2.0 and later only (p. 28, note 15). | The window applies: with the clock set to 2026-11-07, the Sign showed NOV. 7, 2026. | 10184403 rev O (1206) | 2026-11-15 |
+| Per-File overhead | 11 bytes per File (p. 27, note 1). [readerboard](https://github.com/mjaksn/readerboard) reports 13. | 11 bytes per File (TEXT and STRING Files). | 10184403 rev O (1206) | 2026-11-15 |
+| DOTS PICTURE File in the memory budget | Its size is left out of the sum (p. 27, note 1). | **Disagrees.** It costs 11 + 2 + rows × 2 × ⌈columns / 8⌉ bytes, whatever the color depth: 16x16 used 77, 8x8 29, 16x120 493, 1x1 15, 3x3 19, 1x9 17, 1x17 19. A 0x0 picture took 28,596 bytes, which looks like all the remaining memory. The 4120C profile now counts them (`dots_picture_planes=2`). | 10184403 rev O (1206) | 2026-11-15 |
+| Memory Configuration limit | File sizes plus 11 bytes per File must not exceed the pool (p. 27, note 1). | The Sign keeps 9 bytes back. Largest File A it took beside one other File, found by bisection: 28,741 beside TEXT B or STRING T of 100; 28,775 beside a 16x16 DOTS PICTURE; 28,359 beside a 16x120 one. Each is 28,872 minus the Files' sizes, overheads, picture bytes, and 9. A refused configuration leaves the old Files in place. Unused memory goes to the first TEXT File listed (p. 29), so General Information's free figure does not change with that File's size. Read sooner than about 1.5 s after Clear Memory, the Sign reported memory still in use. | 10184403 rev O (1206) | 2026-11-15 |
+| Response leading NULs | 20 NULs before SOH (Table 14, p. 19). | 26, in every captured Response (General Information, Serial Error Status, Network Query). | 10184403 rev O (1206) | 2026-11-15 |
+| Free memory in General Information | The unused portion of the pool (p. 29); unused memory goes to the first TEXT File (p. 29, "#"). | The room the first TEXT File has, less 5 bytes. That File's own size never shows: File A alone left 28,847 free at any size. A 100 + B 100 left 28,736 in either order. A last File of size 0 takes the unused memory instead, and so does a last 0x0 DOTS PICTURE: A 256 + B size 0 left 251. A TEXT File listed after a STRING File got none: T 100 + A 100 left 95. Unexplained: T 100 + A 1,000 left 899, not 995, and a 14-byte write to A lowered free memory by 7. | 10184403 rev O (1206) | 2026-11-15 |
+| Oversized TEXT File write | Not stated. | Into a 10-byte File: a 13-byte write kept its first 11 bytes and set the buffer overflow bit (08H); a 10-byte write was kept whole with no bit. A never-written TEXT File read back as its size in NULs. | 10184403 rev O (1206) | 2026-11-15 |
+| Oversized STRING File write | Not stated. | Into a 5-byte File: a 5-character write was kept; a 6-character write emptied the File, losing what it held, and set the illegal command bit (20H). | 10184403 rev O (1206) | 2026-11-15 |
+| Total memory | 28,000 bytes (Table 5, brochure). | 28,872 bytes (70C8H) in General Information; 28,772 free. | 10184403 rev O (1206) | 2026-11-15 |

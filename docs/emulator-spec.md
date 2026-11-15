@@ -293,9 +293,14 @@ Sign once [hardware-results.md](hardware-results.md) records one.
   Query). A Command the emulator does not know is ignored and listed in `ignored`.
 - **Content.** TEXT Files are parsed into Frames and Segments. Control Codes that the
   emulator does not model are kept as bytes, so that a read returns them unchanged.
-- **Memory.** The Memory Configuration decides which Files exist and their sizes.
-  Memory left is the model's memory minus each File's size and overhead, with the
-  overhead and the DOTS PICTURE rule taken from settings.
+- **Memory.** The Memory Configuration decides which Files exist and their sizes. It
+  is refused, keeping the old Files, when its sizes, overheads, DOTS PICTURE bytes,
+  and the model's reserved bytes exceed the pool. Unused memory goes to the first File
+  when it is a TEXT File, unless a last TEXT File of size 0 or a last 0x0 DOTS PICTURE
+  takes it. Memory left, as General Information reports it, is the room the first
+  TEXT File has less the model's shortfall. The overhead and the DOTS PICTURE rule come
+  from settings. All of this follows a real 4120C
+  ([hardware-results.md](hardware-results.md)).
 - **Display.** The Run Sequence chooses the TEXT File, Run Times and Run Days filter it
   by the emulated clock, and the Priority TEXT File overrides it. Each Frame is laid
   out at its Display Position and drawn in its Mode. Mode timings are approximations:
@@ -316,15 +321,15 @@ hardware checklist or to an assumption written here.
 | Reading | Values | Default and source |
 |---|---|---|
 | Per-File overhead | 11 or 13 bytes | 11 (p. 27, note 1) |
-| DOTS PICTURE size in the memory budget | counted or not | not counted (p. 27, note 1) |
+| DOTS PICTURE size in the memory budget | counted (2 + rows x 2 x ceil(columns / 8) bytes) or not | counted (a real 4120C; p. 27, note 1 leaves it out) |
 | General Information length | 28, 29, or 29 plus NUL | 29 (p. 29 field list) |
 | Tone repeats | `R` plays or `R + 1` plays | `R + 1` (the library's assumption, p. 22 unclear) |
-| NEWS FLASH and TRUMPET form | letters, hex 3AH/3BH, or both | both (Table 66 gives both) |
-| NEW_PAGE and double height on the 4000 Series | drawn or ignored | ignored (Tables 69, 70) |
-| Two-digit year on Alpha 1.0 | 1997-2096 window or 19xx | window (p. 28, note 15) |
+| NEWS FLASH and TRUMPET form | letters, hex 3AH/3BH, both, or none | none (a real 4120C played neither; Appendix G limits them to the BetaBrite 1036) |
+| NEW_PAGE and double height on the 4000 Series | drawn or ignored | ignored (Tables 69, 70; a real 4120C did neither) |
+| Two-digit year on Alpha 1.0 | 1997-2096 window or 19xx | window (p. 28, note 15; a real 4120C used it) |
 | Missing STX pause | drop the nested Command, or accept it | drop (p. 11) |
-| Network Query answer framing | Response Packet with Checksum, or bare data | Response Packet (the library's assumption, p. 32 unclear) |
-| Oversized write | truncate or ignore | ignore (assumption; the manual does not say) |
+| Network Query answer framing | Response Packet with Checksum, or bare data | Response Packet (a real 4120C; p. 32 unclear) |
+| Oversized write | measured, truncate, or ignore | measured: a TEXT File keeps its size + 1 bytes and flags a buffer overflow; a STRING File is emptied and flags an illegal command (a real 4120C; the manual does not say) |
 
 When hardware-results.md gets a row, the default for that Sign Model changes to the
 observed value and cites the row. Settings are per emulated Sign, so one Line can hold
@@ -454,8 +459,9 @@ the emulator in place of a Sign.
 
 ### Open questions
 
-- **What a Sign does with an oversized write.** The manual does not say. The default is
-  a guess until a real Sign shows it.
+- **Capturing a real Sign's display.** Fonts, Mode timings, Special Modes, and Special
+  Graphics can only be matched once a real Sign's display can be recorded pixel by
+  pixel and frame by frame. How to capture it well enough is not settled yet.
 - **Mode timing.** The manual gives speeds but no durations. Measuring a real 4120C
   with a video would give real values.
 - **Special Modes and Special Graphics.** Placeholders until someone watches a real
@@ -511,14 +517,40 @@ Each of these is a guess until a real Sign or the manual settles it. The ones ma
 PROVISIONAL in the code are marked there too.
 
 - **Power-up memory.** TEXT File `A`, unlocked, size `0000`. Size `0000` is read as "all
-  memory left", and it counts only the per-File overhead in the memory budget
-  (PROVISIONAL).
+  memory left", and it counts only the per-File overhead in the memory budget. A real
+  4120C reports the same free memory for File A alone whatever its size, so the size
+  can't be seen.
 - **Firmware.** The 4120C model reports the firmware `EMU4120C`, revision `A`, date
-  `1126`. These are invented, so that no one takes them for a real Sign's (PROVISIONAL).
+  `1126`. These are invented, so that no one takes an emulator capture for a real
+  Sign's. A real 4120C reported `10184403`, `O`, `1206`.
+- **Response NULs.** The 4120C model sends 26 NULs before each Response's SOH, as every
+  capture from a real one shows. The manual's Tables show 20, and the encoder keeps 20
+  for a model that does not say.
+- **Free memory and File content.** Writing content does not change the free memory
+  the emulator reports. A real 4120C reported 7 bytes less after a 14-byte write, which
+  no rule here explains.
+- **Free memory with a STRING File first.** A real 4120C reported 899 bytes free for
+  STRING `T` of 100 then TEXT `A` of 1,000, where the rule gives 995. The emulator
+  follows the rule.
+- **Never-written TEXT File.** A real 4120C read back a TEXT File that was never
+  written as its size in NULs. The emulator reads it back empty, because NUL content
+  would also change what the display draws.
+- **Oversized write to an 11-byte TEXT File boundary.** A real 4120C kept 11 bytes of a
+  13-byte write into a 10-byte File and flagged it, and took a 10-byte write without a
+  flag. An 11-byte write was not tried; the emulator keeps it and flags it.
+- **Oversized Priority TEXT File.** Not measured. Under the "measured" Reading the write
+  is dropped, as under "ignore".
+- **Refused Memory Configuration.** Whether a real Sign sets a Serial Error Status
+  bit when it refuses one is not known. The emulator sets none.
+- **Network Query.** The answer is sent 1 s + 0.5 s x the Sign Address after the
+  query (p. 32), and the Serial Error Status Register is kept, not cleared.
+- **Collisions.** Responses that overlap on the Line combine as a bitwise AND, byte by
+  byte at 9600 baud: the line idles high and a 0 bit wins.
 - **General Information length.** The 28-character Reading leaves out the revision
   letter (PROVISIONAL).
-- **DOTS PICTURE size.** When the Reading counts a DOTS PICTURE File, its size is rows
-  times columns bytes (PROVISIONAL).
+- **DOTS PICTURE size.** When the Reading counts a DOTS PICTURE File, it costs
+  2 + rows x 2 x ceil(columns / 8) bytes besides the overhead, whatever its color
+  depth, as a real 4120C measured.
 - **Colors.** Autocolor and the default color are drawn red.
 - **Run Sequence.** An empty Run Sequence runs every TEXT File in Label order.
 - **Where the display starts.**
@@ -543,7 +575,7 @@ PROVISIONAL in the code are marked there too.
 ### Not modelled
 
 - Special Functions with no handler are ignored and listed in `ignored`, with no
-  register bit: Run Times, Run Days, Network Query, dimming, and the rest the library
+  register bit: Run Times, Run Days, dimming, and the rest the library
   does not send.
 - ASCII Printable formats (p. 15), the 1 s serial timeout, and the number of sync bytes.
 - The 100 ms pause is checked after every STX but the first in a Packet. The first STX
@@ -553,8 +585,6 @@ PROVISIONAL in the code are marked there too.
 
 - Run Times and Run Days. The display runs the Run Sequence without them, and the page
   says they are not modelled.
-- Network Query and collisions on the Line. When Network Query lands, the fixture gets a
-  second emulated Sign for the second-address test, and the discovery test runs.
 - Sound: tones are recorded, but nothing plays them in the browser (Web Audio).
 - Modes other than those above. They show as HOLD, with the Mode's name as a label.
 - Special Graphics animation. The page shows the Special Graphic's name only.
@@ -564,15 +594,15 @@ PROVISIONAL in the code are marked there too.
   entry, not new code.
 - Custom Sign Models made from the page.
 - A dark theme for the page.
+- Fonts, Modes, Special Modes, and Special Graphics as a real Sign draws them. They
+  need a way to capture a real Sign's display first (see Open questions).
 
 ### Results and open checks
 
-- `uv run pytest -m emulator`: 10 passed, 8 skipped, none failed. Two tests need
-  Network Query, and six are witnessed tests. The library and the emulator did not
-  disagree anywhere.
-- The erase tests pass because the emulator's default Readings (11 bytes of overhead per
-  File, DOTS PICTURE Files counting only the overhead) match the library's PROVISIONAL
-  values. That is two readings agreeing, not evidence about a real Sign.
+- `uv run pytest -m emulator`: 13 passed, 6 skipped (the witnessed tests), none
+  failed: the same automatic tests that pass on a real 4120C. The memory, Network
+  Query, and second-address tests run against the emulator's 4120C, whose defaults now
+  follow [hardware-results.md](hardware-results.md).
 - The golden pixel images in `emulator/test/core/__golden__/` were looked at and approved
   in November 2026. A change to them needs a person's approval again; `npx vitest run -u`
   accepts changed images.

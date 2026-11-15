@@ -11,7 +11,7 @@ from enum import Enum
 from importlib import resources
 
 from alpha_led_sign.protocol.commands import Command, SetMemoryConfiguration
-from alpha_led_sign.protocol.memory import StringFile, TextFile
+from alpha_led_sign.protocol.memory import DotsPictureFile, MemoryFile
 from alpha_led_sign.protocol.requirements import Capability, requires
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
@@ -120,13 +120,41 @@ class SignModel:
     file_overhead: int = 11
     """Bytes of memory each File in a Memory Configuration uses besides its size (p. 27,
     note 1). The readerboard project (https://github.com/mjaksn/readerboard) reports
-    13, so a model can change it once hardware shows otherwise."""
+    13, but a 4120C measured 11 (docs/hardware-results.md)."""
+    memory_reserved: int = 0
+    """Bytes of the Memory Pool a Memory Configuration can't use. The manual names none;
+    a 4120C keeps 9 (docs/hardware-results.md)."""
+    dots_picture_planes: int | None = None
+    """How a DOTS PICTURE File's size counts toward memory. ``None`` leaves it out, as
+    p. 27, note 1 says. Otherwise the picture uses 2 + rows x planes x ceil(columns / 8)
+    bytes besides its overhead, whatever its color depth: a 4120C measured 2 planes
+    (docs/hardware-results.md)."""
+
+    def memory_needed(self, files: Sequence[MemoryFile]) -> int:
+        """Bytes of the Memory Pool a Memory Configuration of ``files`` needs."""
+        needed = self.memory_reserved
+        for file in files:
+            needed += self.file_overhead
+            if isinstance(file, DotsPictureFile):
+                if self.dots_picture_planes is not None:
+                    row_bytes = self.dots_picture_planes * -(-file.columns // 8)
+                    needed += 2 + file.rows * row_bytes
+            else:
+                needed += file.size
+        return needed
 
 
 _COLORS = frozenset({Capability.COLOR})
 
 
-def _series_4000(name: str, sign_type: str, columns: int) -> SignModel:
+def _series_4000(
+    name: str,
+    sign_type: str,
+    columns: int,
+    memory_bytes: int = 28_000,
+    memory_reserved: int = 0,
+    dots_picture_planes: int | None = None,
+) -> SignModel:
     capabilities = MATRIX_ROWS["4000 Series"]
     if name.endswith("R"):
         capabilities -= _COLORS  # Table 69, note 1: red only.
@@ -137,15 +165,22 @@ def _series_4000(name: str, sign_type: str, columns: int) -> SignModel:
         columns=columns,  # brochure: N x 16 pixels, 2 lines, 28,000 bytes, 81 messages
         rows=16,
         lines=2,
-        memory_bytes=28_000,
+        memory_bytes=memory_bytes,
         max_messages=81,
         protocol_versions=_EZ_KEY_II_AND_ALPHA_1,
         capabilities=capabilities,
+        memory_reserved=memory_reserved,
+        dots_picture_planes=dots_picture_planes,
     )
 
 
 ALPHA_4080C = _series_4000("4080C", "t", 80)
-ALPHA_4120C = _series_4000("4120C", "a", 120)
+# A 4120C (firmware 10184403 rev O) reported 28,872 bytes, not the brochure's 28,000,
+# kept 9 of them back, and counted DOTS PICTURE sizes (docs/hardware-results.md). The
+# Sign wins.
+ALPHA_4120C = _series_4000(
+    "4120C", "a", 120, memory_bytes=28_872, memory_reserved=9, dots_picture_planes=2
+)
 ALPHA_4120R = _series_4000("4120R", "g", 120)
 ALPHA_4160C = _series_4000("4160C", "b", 160)
 ALPHA_4160R = _series_4000("4160R", "h", 160)
@@ -254,15 +289,13 @@ def _problems(model: SignModel, command: Command) -> list[str]:
 
 
 def _memory_problems(model: SignModel, command: SetMemoryConfiguration) -> list[str]:
-    """p. 27, note 1: TEXT and STRING sizes plus the overhead of each File must fit.
+    """p. 27, note 1: the Files' sizes plus the overhead of each File must fit.
 
-    DOTS PICTURE sizes are left out of the sum, as the note says. Whether their overhead
-    counts is not stated, so it is counted.
+    The model says how DOTS PICTURE Files count and what the Sign keeps for itself.
     """
     if model.memory_bytes is None:
         return []
-    sizes = sum(file.size for file in command.files if isinstance(file, TextFile | StringFile))
-    needed = sizes + model.file_overhead * len(command.files)
+    needed = model.memory_needed(command.files)
     if needed <= model.memory_bytes:
         return []
     return [

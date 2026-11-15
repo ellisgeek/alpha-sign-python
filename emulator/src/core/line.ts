@@ -1,5 +1,5 @@
 // The Line: every Emulated Sign hears every byte; their Responses are merged
-// in time order.
+// in time order. Responses that overlap on the wire garble each other.
 import { defaultCommands } from "./commands/index";
 import type { CommandTable } from "./commands/types";
 import type { EmulatorModel } from "./model";
@@ -55,7 +55,7 @@ export function createLine(setups: SignSetup[], options: LineOptions): Line {
         for (const byte of chunk.bytes) for (const sign of signs) sign.feed(byte, chunk.atMs);
       }
       for (const sign of signs) pending.push(...sign.takeOutgoing());
-      pending.sort((a, b) => a.atMs - b.atMs);
+      pending = collide(pending);
       const out = pending.filter((o) => o.atMs <= toMs);
       pending = pending.filter((o) => o.atMs > toMs);
       return out;
@@ -64,4 +64,35 @@ export function createLine(setups: SignSetup[], options: LineOptions): Line {
       return [...signs];
     },
   };
+}
+
+/** Milliseconds one byte takes at 9600 baud, 8N1: ten bits (Table 3, p. 8). */
+export const BYTE_MS = 10_000 / 9600;
+
+/**
+ * Sorts Responses by time and combines any that overlap on the wire. The serial line
+ * idles high and a 0 bit drives it low, so bytes sent at once combine as a bitwise
+ * AND. Two Signs at one Sign Address answering a Network Query garble each other
+ * this way (p. 32).
+ */
+function collide(responses: Outgoing[]): Outgoing[] {
+  const sorted = [...responses].sort((a, b) => a.atMs - b.atMs);
+  const out: Outgoing[] = [];
+  for (const next of sorted) {
+    const last = out.at(-1);
+    if (!last || next.atMs >= last.atMs + last.bytes.length * BYTE_MS) {
+      out.push(next);
+      continue;
+    }
+    const offset = Math.round((next.atMs - last.atMs) / BYTE_MS);
+    const merged = new Uint8Array(Math.max(last.bytes.length, offset + next.bytes.length));
+    merged.fill(0xff);
+    merged.set(last.bytes);
+    next.bytes.forEach((byte, i) => {
+      const at = offset + i;
+      merged[at] = (at < last.bytes.length ? (merged[at] ?? 0xff) : 0xff) & byte;
+    });
+    out[out.length - 1] = { bytes: merged, atMs: last.atMs };
+  }
+  return out;
 }

@@ -34,17 +34,35 @@ export function configuredFile(
 
 /**
  * Applies the oversized-write Reading: the content to store, or null when the
- * write is dropped.
+ * write is dropped. "measured" does what a real 4120C did (docs/hardware-results.md):
+ * a TEXT File keeps the first capacity + 1 bytes and sets the buffer overflow bit; a
+ * STRING File is emptied and the illegal command bit is set (p. 31). The Priority
+ * TEXT File was not measured: there "measured" drops the write, as "ignore" does.
  */
 export function fitContent(
   ctx: CommandContext,
+  type: FileType | "PRIORITY",
   content: string,
   capacity: number,
   label: string,
   body: string,
 ): string | null {
   if (content.length <= capacity) return content;
-  if (ctx.readings.oversizedWrite === "truncate") return content.slice(0, capacity);
+  const reading = ctx.readings.oversizedWrite;
+  if (reading === "measured" && type === "TEXT") {
+    ctx.flagSerialError(SerialError.bufferOverflow);
+    return content.slice(0, capacity + 1);
+  }
+  if (reading === "measured" && type === "STRING") {
+    ctx.flagSerialError(SerialError.illegalCommand);
+    ctx.ignore(
+      "oversized-write",
+      `${content.length} bytes into File ${label} of ${capacity}`,
+      body,
+    );
+    return "";
+  }
+  if (reading === "truncate") return content.slice(0, capacity);
   ctx.ignore("oversized-write", `${content.length} bytes into File ${label} of ${capacity}`, body);
   return null;
 }
@@ -60,7 +78,7 @@ export function writeFile(
   const entry = configuredFile(ctx, label, type, body);
   if (!entry) return false;
   const capacity = fileCapacity(entry, ctx.state, ctx.model, ctx.readings);
-  const fitted = fitContent(ctx, content, capacity, label, body);
+  const fitted = fitContent(ctx, type, content, capacity, label, body);
   if (fitted === null) return false;
   ctx.state.files[label] = { label, type, data: fitted };
   return true;

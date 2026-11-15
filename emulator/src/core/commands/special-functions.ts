@@ -6,7 +6,13 @@
 // modelled label is an illegal write or read and sets register bit 5 (p. 31).
 // To model another label, add one entry to `writes` or `reads`.
 import { clockAt, setDate, setDayOfWeek, setTimeOfDay } from "../clock";
-import { encodeEntry, memoryLeft, parseMemoryConfiguration, powerUpMemory } from "../memory";
+import {
+  encodeEntry,
+  memoryLeft,
+  memoryNeeded,
+  parseMemoryConfiguration,
+  powerUpMemory,
+} from "../memory";
 import type { CommandContext, CommandHandler, CommandTable, ReceivedCommand } from "./types";
 import { SERIAL_ERRORS_CLEAR, SerialError } from "./types";
 
@@ -26,6 +32,11 @@ function unsupported(ctx: CommandContext, cmd: ReceivedCommand, detail: string):
 
 const pad2 = (n: number) => n.toString().padStart(2, "0");
 const hex4 = (n: number) => n.toString(16).toUpperCase().padStart(4, "0");
+const hex2 = (n: number) => n.toString(16).toUpperCase().padStart(2, "0");
+
+/** A Sign answers a Network Query 1 s + 0.5 s x its Sign Address after it (p. 32). */
+export const NETWORK_QUERY_FIRST_MS = 1000;
+export const NETWORK_QUERY_STEP_MS = 500;
 
 /** Two decimal digits, or NaN. */
 function digits2(s: string): number {
@@ -59,7 +70,9 @@ const writes: Record<string, LabelHandler> = {
   },
 
   // Clear Memory ("E$" alone) or Set Memory Configuration (p. 21): a new table
-  // replaces the old one and every File starts empty.
+  // replaces the old one and every File starts empty. A real 4120C kept its old
+  // Files when a table needed more than its pool (docs/hardware-results.md);
+  // whether it sets a register bit is not known, so none is set.
   $(data, cmd, ctx) {
     const { state } = ctx;
     if (data === "") {
@@ -71,6 +84,14 @@ const writes: Record<string, LabelHandler> = {
     }
     const entries = parseMemoryConfiguration(data);
     if (!entries) return illegal(ctx, cmd, "Memory Configuration is FTPSIZEQQQQ per File");
+    const needed = memoryNeeded(entries, ctx.model, ctx.readings);
+    if (needed > ctx.model.memoryBytes) {
+      return ctx.ignore(
+        "memory-configuration-too-big",
+        `needs ${needed} bytes; the pool has ${ctx.model.memoryBytes}`,
+        `${cmd.code}${cmd.data}`,
+      );
+    }
     state.memoryConfiguration = entries;
     state.files = Object.fromEntries(
       entries.map((e) => [e.label, { label: e.label, type: e.type, data: "" }]),
@@ -223,6 +244,19 @@ const reads: Record<string, LabelHandler> = {
   "*"(_data, _cmd, ctx) {
     ctx.respond(`E*${String.fromCharCode(ctx.state.serialErrors)}`);
     ctx.state.serialErrors = SERIAL_ERRORS_CLEAR;
+  },
+
+  // Network Query: UAAZ (p. 32), U Sign Type, AA Sign Address, Z the Serial Error
+  // Status Register, sent 1 s + 0.5 s x the Sign Address after the query. A real
+  // 4120C answered with a Response Packet "E-UAAZ" (docs/hardware-results.md); Reading
+  // networkQueryFraming = "bare" sends UAAZ alone. Whether the answer clears the
+  // register is not known, so it is kept.
+  "-"(_data, _cmd, ctx) {
+    const { signAddress, serialErrors } = ctx.state;
+    const data = `${ctx.model.signType}${hex2(signAddress)}${String.fromCharCode(serialErrors)}`;
+    const delayMs = NETWORK_QUERY_FIRST_MS + NETWORK_QUERY_STEP_MS * signAddress;
+    if (ctx.readings.networkQueryFraming === "bare") ctx.respond(data, { delayMs, bare: true });
+    else ctx.respond(`E-${data}`, { delayMs });
   },
 
   // Read Run Sequence: KPF... (p. 32).

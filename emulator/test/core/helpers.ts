@@ -21,6 +21,13 @@ export function text(data: Uint8Array): string {
 
 export const SYNC = "\x00\x00\x00\x00\x00";
 
+/**
+ * The NULs a 4120C sends before a Response's SOH: 26 in every capture from a real
+ * one (docs/hardware-results.md). The manual's Tables show 20; the rest of each
+ * Table's bytes are unchanged.
+ */
+export const NULS_4120C = "\x00".repeat(26);
+
 /** A Command table whose handlers only record what reached them. */
 export function recordingCommands(codes: string): {
   commands: CommandTable;
@@ -76,11 +83,11 @@ export function oneSign(readings: Partial<Readings> = {}, signAddress = 1) {
 
 /**
  * The Special Functions Data of a Table 18 Response (p. 36) to `F<label>`:
- * 20 NULs, SOH, "000", STX, "E", label; then the data, ETX, a 4-digit
+ * the 4120C's 26 NULs, SOH, "000", STX, "E", label; then the data, ETX, a 4-digit
  * Checksum, and EOT.
  */
 export function specialData(reply: string | undefined, label: string): string {
-  const head = `${"\x00".repeat(20)}\x01000\x02E${label}`;
+  const head = `${NULS_4120C}\x01000\x02E${label}`;
   if (reply === undefined || !reply.startsWith(head) || !reply.endsWith("\x04")) {
     throw new Error(`not a Table 18 reply to F${label}: ${JSON.stringify(reply)}`);
   }

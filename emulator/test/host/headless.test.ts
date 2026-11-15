@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CommandTable } from "../../src/core";
 import { type Headless, startHeadless } from "../../src/host/headless";
-import { bytes, SYNC, text } from "../core/helpers";
+import { bytes, NULS_4120C, SYNC, text } from "../core/helpers";
 
 let host: Headless | undefined;
 
@@ -104,9 +104,9 @@ describe("headless host", () => {
     socket.write(bytes(`${SYNC}\x01Z01\x02ACFILE C\x04`));
     socket.write(bytes(`${SYNC}\x01Z01\x02BC\x04`));
     await sleep(100);
-    // Table 46: <NUL> x 20, <SOH>"000"<STX>"ACFILE C"<ETX>"020C"<EOT>.
+    // Table 46 after the 4120C's 26 NULs: <SOH>"000"<STX>"ACFILE C"<ETX>"020C"<EOT>.
     expect(text(new Uint8Array(Buffer.concat(received)))).toBe(
-      `${"\x00".repeat(20)}\x01000\x02ACFILE C\x03020C\x04`,
+      `${NULS_4120C}\x01000\x02ACFILE C\x03020C\x04`,
     );
     socket.destroy();
   });

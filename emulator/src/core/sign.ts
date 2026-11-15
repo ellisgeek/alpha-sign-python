@@ -4,7 +4,7 @@
 // Readings or input blocks behave independently. Commands run as soon as they
 // are complete (after their ETX + Checksum, or at the next STX / EOT);
 // Responses wait for the Packet's EOT.
-import { checksum } from "./bytes";
+import { checksum, stringToBytes } from "./bytes";
 import { clockAt } from "./clock";
 import { TABLE_6_COMMAND_CODES } from "./commands/index";
 import {
@@ -59,7 +59,7 @@ export function createSign(
   now: () => number,
 ): SignInternals {
   let parser: ParserState = { kind: "idle" };
-  let queuedResponses: { body: string; delayMs: number }[] = [];
+  let queuedResponses: { body: string; delayMs: number; bare: boolean }[] = [];
   let outgoing: Outgoing[] = [];
   let blockedRunOpen = false;
   /** Set when a Command in the open Packet started a tone's silence. */
@@ -77,7 +77,11 @@ export function createSign(
       model,
       readings: settings,
       respond(body, options) {
-        queuedResponses.push({ body, delayMs: options?.delayMs ?? 0 });
+        queuedResponses.push({
+          body,
+          delayMs: options?.delayMs ?? 0,
+          bare: options?.bare ?? false,
+        });
       },
       ignore(reason, detail, bytes) {
         ignore(atMs, reason, detail, bytes);
@@ -136,7 +140,8 @@ export function createSign(
 
   function endPacket(atMs: number): void {
     for (const r of queuedResponses) {
-      outgoing.push({ bytes: encodeResponse(r.body), atMs: atMs + r.delayMs });
+      const bytes = r.bare ? stringToBytes(r.body) : encodeResponse(r.body, model.responseNuls);
+      outgoing.push({ bytes, atMs: atMs + r.delayMs });
     }
     queuedResponses = [];
     parser = { kind: "idle" };

@@ -160,11 +160,15 @@ from [alpha-american.com](https://www.alpha-american.com/):
 | [`B-Alpha-4000-Series-Indoor-Displays.pdf`](https://www.alpha-american.com/alpha-manuals/B-Alpha-4000-Series-Indoor-Displays.pdf) | Alpha 4000 Series indoor displays brochure |
 | [`M-Networking-Alpha-Signs.pdf`](https://www.alpha-american.com/alpha-manuals/M-Networking-Alpha-Signs.pdf) | Networking Alpha signs manual |
 | [`M-Alpha-KB.pdf`](https://www.alpha-american.com/alpha-manuals/M-Alpha-KB.pdf) | Alpha knowledge base |
+| [`M-Cables-Adapters-Interfaces.pdf`](https://www.alpha-american.com/alpha-manuals/M-Cables-Adapters-Interfaces.pdf) | Cables, adapters, and interfaces (sign port and cable pinouts) |
+| [`TM-Network-Cabling-Pinouts.pdf`](https://www.alpha-american.com/alpha-manuals/TM-Network-Cabling-Pinouts.pdf) | TechMemo #02-0010A, network cabling and sign connector pinouts |
+| [`M-Install-Alpha-Series.pdf`](https://www.alpha-american.com/alpha-manuals/M-Install-Alpha-Series.pdf) | Alpha series sign installation instructions (mounting, serial address) |
 
 To fetch them all:
 
 ```sh
-for f in M-Protocol.pdf B-Alpha-4000-Series-Indoor-Displays.pdf M-Networking-Alpha-Signs.pdf M-Alpha-KB.pdf; do
+for f in M-Protocol.pdf B-Alpha-4000-Series-Indoor-Displays.pdf M-Networking-Alpha-Signs.pdf M-Alpha-KB.pdf \
+  M-Cables-Adapters-Interfaces.pdf TM-Network-Cabling-Pinouts.pdf M-Install-Alpha-Series.pdf; do
   curl -fsSL -o "docs/reference/$f" "https://www.alpha-american.com/alpha-manuals/$f"
 done
 ```

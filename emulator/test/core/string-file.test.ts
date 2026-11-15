@@ -1,6 +1,6 @@
 // Write and read STRING File (pp. 37-38), with the Appendix F Packets.
 import { describe, expect, it } from "vitest";
-import { oneSign, SYNC } from "./helpers";
+import { NULS_4120C, oneSign, SYNC } from "./helpers";
 
 // STRING Files "1" and "2", locked, 10 bytes ("000A"), as Table 55 sets up "l" (p. 71).
 const CONFIGURE = `${SYNC}\x01Z00\x02E$AAU0100FF001BL000A00002BL000A0000\x04`;
@@ -35,8 +35,20 @@ describe("Write STRING File", () => {
     expect(sign.snapshot().ignored.map((i) => i.reason)).toEqual(["wrong-file-type"]);
   });
 
+  // A real 4120C (docs/hardware-results.md): a 6-character write into a 5-byte STRING
+  // File emptied it, even of what it held, and set the illegal command bit (20H, p. 31).
+  it("empties the File and flags a write larger than it", () => {
+    const { sign, send } = oneSign();
+    send(`${SYNC}\x01Z00\x02E$AAU0100FF00TBL00050000\x04`);
+    send(`${SYNC}\x01Z00\x02GT12345\x04`);
+    expect(sign.snapshot().files.T?.data).toBe("12345");
+    send(`${SYNC}\x01Z00\x02GT123456\x04`);
+    expect(sign.snapshot().files.T?.data).toBe("");
+    expect(sign.snapshot().serialErrors).toBe(0x60);
+  });
+
   it("applies Reading oversizedWrite to an 11-byte write into 10 bytes", () => {
-    const ignoring = oneSign();
+    const ignoring = oneSign({ oversizedWrite: "ignore" });
     ignoring.send(CONFIGURE);
     ignoring.send(`${SYNC}\x01Z00\x02G112345678901\x04`);
     expect(ignoring.sign.snapshot().files["1"]?.data).toBe("");
@@ -49,7 +61,7 @@ describe("Write STRING File", () => {
   });
 
   it("holds at most 125 bytes whatever its configured size (p. 37)", () => {
-    const { sign, send } = oneSign();
+    const { sign, send } = oneSign({ oversizedWrite: "ignore" });
     send(`${SYNC}\x01Z00\x02E$SBL00FF0000\x04`);
     send(`${SYNC}\x01Z00\x02GS${"X".repeat(126)}\x04`);
     expect(sign.snapshot().ignored.map((i) => i.reason)).toEqual(["oversized-write"]);
@@ -63,7 +75,7 @@ describe("Read STRING File", () => {
     send(`${SYNC}\x01Z00\x02G28,234,000\x04`);
     // Table 58 addresses a 215C ("f08"); this 4120C at address 08 hears "Z08".
     expect(send(`${SYNC}\x01Z08\x02H2\x04`)).toEqual([
-      `${"\x00".repeat(20)}\x01000\x02G28,234,000\x030237\x04`,
+      `${NULS_4120C}\x01000\x02G28,234,000\x030237\x04`,
     ]);
   });
 

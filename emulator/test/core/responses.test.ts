@@ -1,10 +1,12 @@
 // Response Packets (Table 14, p. 19; Table 18, p. 36; Tables 45-46, p. 64).
 import { describe, expect, it } from "vitest";
 import { type CommandTable, createLine, encodeResponse, model4120C } from "../../src/core";
-import { bytes, START_CLOCK_MS, SYNC, text } from "./helpers";
+import { bytes, NULS_4120C, START_CLOCK_MS, SYNC, text } from "./helpers";
 
 // Table 46: <NUL> x 20, <SOH>"000"<STX>"ACFILE C"<ETX>"020C"<EOT>.
 const TABLE_46 = `${"\x00".repeat(20)}\x01000\x02ACFILE C\x03020C\x04`;
+// The same Response off the Line, after a 4120C's 26 NULs.
+const TABLE_46_4120C = `${NULS_4120C}\x01000\x02ACFILE C\x03020C\x04`;
 
 // A stand-in Read TEXT File handler: answers Table 45 the way Table 46 shows.
 const readC: CommandTable = {
@@ -29,7 +31,7 @@ describe("Responses on the Line", () => {
     line.receive(bytes("\x04"), 1005);
     const out = line.advance(2000);
     expect(out.map((o) => ({ text: text(o.bytes), atMs: o.atMs }))).toEqual([
-      { text: TABLE_46, atMs: 1005 },
+      { text: TABLE_46_4120C, atMs: 1005 },
     ]);
   });
 

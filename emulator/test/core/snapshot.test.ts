@@ -14,13 +14,13 @@ function freshSign(readings = {}) {
 }
 
 describe("4120C model data", () => {
-  it("matches Table 5, Table 3, and the 4000 Series brochure", () => {
+  it("matches Table 5, Table 3, the 4000 Series brochure, and the hardware", () => {
     expect(model4120C).toMatchObject({
       signType: "a", // Table 5, p. 10: "a" 61H = 4120C sign
       columns: 120, // brochure p. 2: 120 x 16 pixels
       rows: 16,
       lines: 2, // brochure p. 1: two-line display, 1 or 2 line messages
-      memoryBytes: 28000, // brochure p. 2: display memory sizes 28,000
+      memoryBytes: 28872, // a real 4120C reported 28,872 (docs/hardware-results.md); brochure p. 2 says 28,000
       maxMessages: 81, // brochure p. 2: 81 different messages
       protocolVersions: ["EZKEY II", "Alpha 1.0"], // Table 3, p. 8: 4000 Series
     });
@@ -94,15 +94,15 @@ describe("Readings", () => {
   it("defaults to the cited values in docs/emulator-spec.md, Readings", () => {
     expect(freshSign().sign.settings).toEqual({
       perFileOverhead: 11,
-      dotsPictureCounted: false,
+      dotsPictureCounted: true,
       generalInfoLength: "29",
       toneRepeats: "R+1",
-      newsFlashTrumpetForm: "both",
+      newsFlashTrumpetForm: "none",
       newPageDoubleHeight: "ignored",
       twoDigitYear: "window",
       missingStxPause: "drop",
       networkQueryFraming: "response-packet",
-      oversizedWrite: "ignore",
+      oversizedWrite: "measured",
     });
   });
 

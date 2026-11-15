@@ -8,10 +8,10 @@ const ETX = "\x03";
 const EOT = "\x04";
 
 /**
- * Frames a Response body: twenty NULs, SOH, Type Code "0", Sign Address "00"
- * ("sent regardless of the sign's actual address"), STX, body, ETX, Checksum, EOT.
+ * Frames a Response body: NULs (twenty in Table 14), SOH, Type Code "0", Sign Address
+ * "00" ("sent regardless of the sign's actual address"), STX, body, ETX, Checksum, EOT.
  */
-export function encodeResponse(body: string): Uint8Array {
+export function encodeResponse(body: string, nuls = 20): Uint8Array {
   const sum = checksum(`${STX}${body}${ETX}`);
-  return stringToBytes(`${NUL.repeat(20)}${SOH}000${STX}${body}${ETX}${sum}${EOT}`);
+  return stringToBytes(`${NUL.repeat(nuls)}${SOH}000${STX}${body}${ETX}${sum}${EOT}`);
 }

@@ -31,6 +31,7 @@ results in docs/hardware-results.md.
 
 import json
 import os
+import time
 import warnings
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -115,6 +116,9 @@ EMULATED = emulator.selected
 SETTINGS = Settings.from_env()
 CAPTURE_PATH = os.environ.get("ALPHA_SIGN_CAPTURE")
 
+CLEAR_MEMORY_SECONDS = 1.5
+"""A wait after Clear Memory. Read sooner, a 4120C reported memory still in use."""
+
 needs_erase = pytest.mark.skipif(
     not EMULATED and not _flag("ALPHA_SIGN_ALLOW_ERASE"), reason="set ALPHA_SIGN_ALLOW_ERASE=1"
 )
@@ -126,9 +130,6 @@ needs_witness = (
     pytest.mark.skip(reason="witnessed tests need a person watching a real Sign, not the emulator")
     if EMULATED
     else pytest.mark.skipif(not _flag("ALPHA_SIGN_WITNESS"), reason="set ALPHA_SIGN_WITNESS=1")
-)
-needs_network_query = pytest.mark.skipif(
-    EMULATED, reason="the emulator does not answer Network Query yet (deferred past its MVP)"
 )
 
 
@@ -184,7 +185,13 @@ def open_sign(request: pytest.FixtureRequest, captures: Captures) -> Iterator[Ca
         )
         recording = RecordingTransport(serial)
         captures.recordings.setdefault(request.node.nodeid, []).append(recording)
-        sign = Sign(recording, model=SETTINGS.model, address=SETTINGS.address, strict=True)
+        sign = Sign(
+            recording,
+            model=SETTINGS.model,
+            address=SETTINGS.address,
+            strict=True,
+            broadcast_reads=True,  # the hardware tests expect one Sign on the line
+        )
         opened.append(sign)
         return sign
 
@@ -234,7 +241,8 @@ def test_general_information_parses(sign: Sign) -> None:
 
 
 def test_the_signs_memory_matches_the_model(sign: Sign) -> None:
-    # Checklist: total memory. Table 5 and the brochure: 28,000 bytes on the 4000 Series.
+    # Checklist: total memory. The brochure says 28,000 bytes on the 4000 Series; a 4120C
+    # reported 28,872 (docs/hardware-results.md), so the model's figure is the Sign's.
     if sign.model.memory_bytes is None:
         pytest.skip(f"{sign.model.name} has no memory size")
 
@@ -280,15 +288,18 @@ def test_beep_then_more_data(sign: Sign) -> None:
     assert sign.serial_errors().ok
 
 
-@needs_network_query
 def test_discovery_finds_this_sign(sign: Sign) -> None:
     # Checklist: the format of Network Query answers (`E-UAAZ`, assumed a Response Packet).
     found = discover(sign.transport, max_address=max(SETTINGS.address, 1))
+    addresses = [answer.address for answer in found]
 
-    assert SETTINGS.address in [answer.address for answer in found]
+    if SETTINGS.address == 0:
+        # 0 is the broadcast address: the Sign answers with its own address instead.
+        assert addresses
+    else:
+        assert SETTINGS.address in addresses
 
 
-@needs_network_query
 @needs_readdress
 def test_network_query_answers_at_a_second_sign_address(sign: Sign) -> None:
     # Captures a second answer for the discovery tests (p. 26, p. 32).
@@ -336,16 +347,42 @@ def test_each_file_costs_its_size_plus_the_manuals_overhead(sign: Sign) -> None:
 
 
 @needs_erase
-def test_a_dots_picture_file_costs_only_the_overhead(sign: Sign) -> None:
-    # Checklist: p. 27, note 1 leaves DOTS PICTURE sizes out of the sum. The library
-    # assumes the per-File overhead still counts.
-    base = [TextFile("A", size=256)]
+def test_a_dots_picture_file_costs_what_the_model_says(sign: Sign) -> None:
+    # Checklist: p. 27, note 1 leaves DOTS PICTURE sizes out of the sum. A 4120C counts
+    # them, and its model says how.
+    base: list[MemoryFile] = [TextFile("A", size=256)]
+    with_picture = [*base, DotsPictureFile("P", rows=16, columns=16)]
 
-    used_base = _used(sign, base)
-    used_with_picture = _used(sign, [*base, DotsPictureFile("P", rows=16, columns=16)])
+    extra = _used(sign, with_picture) - _used(sign, base)
 
-    extra = used_with_picture - used_base
-    assert extra == sign.model.file_overhead, f"a 16x16 DOTS PICTURE File used {extra} bytes"
+    expected = sign.model.memory_needed(with_picture) - sign.model.memory_needed(base)
+    assert extra == expected, f"a 16x16 DOTS PICTURE File used {extra} bytes"
+
+
+@needs_erase
+def test_the_largest_memory_configuration_the_sign_takes_is_the_models(sign: Sign) -> None:
+    # Checklist: the Memory Configuration limit. The Sign gives unused memory to the first
+    # TEXT File, so a refused configuration shows only as File B never being made.
+    if sign.model.memory_bytes is None:
+        pytest.skip(f"the {sign.model.name} profile has no memory size")
+    other = TextFile("B", size=100)
+    largest = sign.model.memory_bytes - sign.model.memory_needed([TextFile("A", size=0), other])
+
+    sign.clear_memory()
+    time.sleep(CLEAR_MEMORY_SECONDS)
+    alone = _used(sign, [TextFile("A", size=256)])
+    sign.clear_memory()
+    time.sleep(CLEAR_MEMORY_SECONDS)
+    at_limit = _used(sign, [TextFile("A", size=largest), other])
+    sign.clear_memory()
+    time.sleep(CLEAR_MEMORY_SECONDS)
+    sign.strict = False  # the model refuses this one; send it anyway
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        past_limit = _used(sign, [TextFile("A", size=largest + 1), other])
+
+    assert at_limit > alone, f"the Sign refused File A of {largest} bytes beside File B"
+    assert past_limit < at_limit, f"the Sign took File A of {largest + 1} bytes beside File B"
 
 
 # Witnessed tests
@@ -393,8 +430,13 @@ def test_special_mode_letters_are_the_right_form(
 ) -> None:
     # Checklist: Table 66 gives "A"/"B" and also hex 3AH/3BH. The library sends letters,
     # so only the letter form can fail this test. The hex form's answer is recorded.
+    # Appendix G limits these to the BetaBrite 1036: on a Sign whose profile leaves
+    # them out, the test checks that neither form plays.
     name = special_mode.name.replace("_", " ")
-    sign.write_text("A", Frame(special_mode, Position.FILL, "LETTER"))
+    sign.strict = False  # the profile may say the Sign can't; send it anyway
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sign.write_text("A", Frame(special_mode, Position.FILL, "LETTER"))
     letter = ask(f"Did the Sign show the {name} Special Mode before LETTER?", "yn")
     mode_field = b"\x1b" + Position.FILL.value.encode("ascii") + b"n" + hex_specifier
     sign.send(RawWriteText("A", mode_field + b"HEX"))
@@ -403,7 +445,14 @@ def test_special_mode_letters_are_the_right_form(
     results = {"letter form": letter, "hex form": hexed}
     request.node.user_properties.extend(results.items())
     print(f"\n{name}: letter form {letter}, hex form {hexed}")
-    assert letter == "y", f"{name}: letter form no, hex form {hexed}"
+    capabilities = sign.model.capabilities
+    if capabilities is None or Capability.BETABRITE_1036_ANIMATIONS in capabilities:
+        assert letter == "y", f"{name}: letter form no, hex form {hexed}"
+    else:
+        assert (letter, hexed) == ("n", "n"), (
+            f"{name}: letter form {letter}, hex form {hexed}, "
+            f"but the {sign.model.name} profile says it cannot"
+        )
 
 
 @pytest.mark.parametrize(

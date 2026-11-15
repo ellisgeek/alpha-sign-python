@@ -16,7 +16,7 @@ export const textFileCommands: CommandTable = {
       if (content === "") {
         ctx.state.priority = null;
       } else {
-        const fitted = fitContent(ctx, content, PRIORITY_SIZE, label, body);
+        const fitted = fitContent(ctx, "PRIORITY", content, PRIORITY_SIZE, label, body);
         if (fitted === null) return;
         ctx.state.priority = { label, type: "TEXT", data: fitted };
       }

@@ -233,7 +233,7 @@ from a real Sign.
 
 67. As a maintainer, I want every expected byte in the tests to cite a manual table or
     page or a hardware capture, so that a test can't pass by repeating the code's own
-    mistake. **(waits for hardware:** three Response vectors are hand-summed until a capture replaces them**)**
+    mistake.
 68. As a maintainer, I want to add a Sign Model by adding one data entry, so that
     support grows without new classes.
 69. As a maintainer, I want to add a Command by adding one small class, so that Alpha
@@ -256,6 +256,10 @@ from a real Sign.
 77. As a maintainer, I want each hardware result recorded with the manual's claim,
     the Sign's behavior, the firmware, and the date, so that profile overrides are
     traceable.
+78. As an application developer, I want a read sent to the broadcast address or a
+    `?` pattern refused unless I say only one Sign is on the line, so that answers
+    from several Signs don't collide. (Numbered last so that the numbers tests cite
+    stay the same.)
 
 ## Implementation Decisions
 
@@ -264,7 +268,7 @@ from a real Sign.
 | Fact | Source | Consequence |
 |---|---|---|
 | The 4000 Series accepts EZ KEY II and Alpha 1.0 only: 1200-9600 baud, 7E2 or 8N1. | Table 3, p. 8 | Every Command and Control Code has a known minimum Protocol Version. Each Sign Model lists the versions it accepts. |
-| 4120C: Sign Type `a`, 120x16 pixels, 2 lines, tricolor, 28,000 bytes, 81 messages. | Table 5; brochure | One data entry in the model registry, not code. |
+| 4120C: Sign Type `a`, 120x16 pixels, 2 lines, tricolor, 28,872 bytes, 81 messages. The brochure says 28,000 bytes; the Sign reported 28,872, keeps 9 of them back, and counts DOTS PICTURE sizes. | Table 5; brochure; [hardware-results.md](hardware-results.md) | One data entry in the model registry, not code. |
 | Packet: 5+ NUL, SOH, Sign Type, 2-hex-digit Sign Address, then STX, Command, optional ETX and Checksum, repeated for each Command, then EOT. | pp. 10-14 | One pure encoder handles single, nested, and checksummed Packets. |
 | A nested Packet needs at least 100 ms of silence after each STX. A tone Command needs 3 s of silence after it. | pp. 11, 27 | The encoder returns byte chunks with the pauses between them. Sleeping is the sender's job, so tests stay instant. |
 | Writing the Memory Configuration erases every File. | p. 21 | The API makes this explicit and hard to call by accident. |
@@ -304,9 +308,11 @@ to one Sign Model.
    the extracted Tables 68-70, which ship inside the package as JSON and are mapped to
    library enums. A table cell with a footnote counts as supported. The "R" (red-only)
    4000 Series models lose the color Capability (Table 69, note 1).
-3. **Overrides wait for evidence.** Until hardware shows the first difference from the
-   manual, an override is a copy of a model with replaced Capabilities. A declared
-   overrides field arrives with that first difference. **(waits for hardware)**
+3. **Overrides wait for evidence.** A Capability override is a copy of a model with
+   replaced Capabilities. A declared overrides field arrives with the first hardware
+   result that shows a Capability differing from the manual. The 4120C's Capabilities
+   all matched; its differences were memory figures, which are plain `SignModel`
+   fields (`memory_bytes`, `memory_reserved`, `dots_picture_planes`).
 4. **Every code's needs are looked up in one place.** Each Command declares the
    minimum Protocol Version it needs. For every Mode, color, font, and other Control
    Code, one requirements function gives the minimum version and the Capability. A
@@ -350,8 +356,8 @@ to one Sign Model.
   TCP bridge. Defaults: 9600 baud, 8N1. 7E2 is the other format Alpha 1.0 accepts
   (Table 3).
 - **Sign.** Built from a Transport, a Sign Model (default generic), a Sign Address
-  (default 0), a strict flag (default off), a checksum flag (default on), and a read
-  timeout (default 2 s). A class method opens it on a serial URL. Task methods:
+  (default 0), a strict flag (default off), a checksum flag (default on), a read
+  timeout (default 2 s), and a broadcast-reads flag (default off). A class method opens it on a serial URL. Task methods:
   `show`, `write_text`, `write_string`, `priority`, `clear_priority`,
   `configure_memory`, `clear_memory`, `soft_reset`, `set_time_format`,
   `run_sequence`, `set_clock`, `beep`, `read_text`, `read_string`, `info`,
@@ -407,14 +413,22 @@ change.
 - A STRING File of size 0, or a TEXT File of size 0 that is not last, raises
   `ValueError` (p. 27, note 1: size 0 is valid only for a last TEXT File).
 - `SignModel` has a per-File overhead field, default 11 bytes (p. 27, note 1;
-  readerboard reports 13, so this is model data). The memory budget counts TEXT and
-  STRING sizes plus the overhead for every File, DOTS PICTURE Files included (the
-  cautious reading of note 1). The check is skipped when the memory size is unknown.
-  An overflow is `UnsupportedCapability` in strict mode and a warning otherwise.
+  readerboard reports 13, a 4120C measured 11). The memory budget counts TEXT and
+  STRING sizes plus the overhead for every File, DOTS PICTURE Files included. Two
+  more fields default to the manual and hold what hardware showed:
+  `memory_reserved` (bytes the Sign keeps back; 9 on the 4120C) and
+  `dots_picture_planes` (`None` leaves DOTS PICTURE sizes out, as note 1 says; with
+  a value, a picture costs 2 + rows x planes x ceil(columns / 8); 2 on the 4120C).
+  `SignModel.memory_needed` gives the total. The check is skipped when the memory
+  size is unknown. An overflow is `UnsupportedCapability` in strict mode and a
+  warning otherwise.
 - `set_sign_address` refuses address 0 or a `?` pattern (both reach more than one
   Sign) unless the caller passes `broadcast=True`:
   sent to broadcast, it would give every Sign on the line the same address. The
   refusal sends nothing. After sending, `Sign` addresses the new Sign Address.
+- `query`, and so every read, refuses address 0 or a `?` pattern unless the `Sign`
+  was made with `broadcast_reads=True`: every matching Sign answers, and their
+  answers collide. The refusal sends nothing. Discovery does not go through `query`.
 - One Sign Address check, in its own protocol module (next to Recipient would make
   an import cycle), is used by Recipient, the address
   Command, and discovery. Lookup by Sign Type (a model only when exactly one has that
@@ -496,18 +510,20 @@ Each hardware test maps to one of these items: a place where the manual is uncle
 the library made an assumption. Each result is recorded with the manual's claim, what
 the Sign did, the firmware, and the date, in
 [hardware-results.md](hardware-results.md). The first result that disagrees with the
-manual brings in the overrides field (extensibility rule 3).
+manual brings in a model field or, for a Capability, the overrides field
+(extensibility rule 3).
 
 | Item | Library's assumption | Test |
 |---|---|---|
 | Network Query answers: the manual gives only the `UAAZ` data. | Each arrives as a Response Packet (`E-UAAZ` with a Checksum), like other special function reads. | Automatic |
 | General Information: the manual says 28 or 29 characters, but its field list adds up to 29 plus an optional NUL. | 29 characters. | Automatic |
 | Programmable tones: whether `R` (repeats) counts the first play. | It doesn't: the library waits for `R + 1` plays. | Witnessed: "Did you hear 3 plays?" |
-| NEWS FLASH and TRUMPET: Table 66 gives `"A"`/`"B"` and also hex 3AH/3BH. | The letters. | Witnessed: show each form. |
+| NEWS FLASH and TRUMPET: Table 66 gives `"A"`/`"B"` and also hex 3AH/3BH. Appendix G limits both to the BetaBrite 1036. | The letters. No BetaBrite 1036 is planned for testing, so this assumption stays unchecked. | Witnessed: show each form. On a Sign whose profile leaves them out, neither form may play. |
 | NEW_PAGE and double height on the 4000 Series: missing from Tables 69 and 70. | Not supported. | Witnessed: show each. |
 | Two-digit year on Alpha 1.0: p. 28, note 15 gives the 1997-2096 window for Alpha 2.0 and later only. | The window applies to every Sign. | Witnessed: set 2026-11-07, show the date. |
-| Per-File overhead: the manual says 11 bytes, readerboard reports 13. Whether DOTS PICTURE Files count. | 11 bytes, DOTS PICTURE included. | Automatic, needs erase permission: measure free memory with one File and with three. |
-| Total memory: General Information against the model's memory size. | 28,000 bytes on the 4000 Series. | Automatic, with the overhead test. |
+| Per-File overhead: the manual says 11 bytes, readerboard reports 13. Whether DOTS PICTURE Files count. | 11 bytes, DOTS PICTURE included. On the 4120C, DOTS PICTURE sizes count too, as its model says. | Automatic, needs erase permission: measure free memory with one File and with three, and with and without a DOTS PICTURE File. |
+| Total memory: General Information against the model's memory size. | 28,000 bytes on the 4000 Series (brochure). The 4120C reported 28,872, and its model now uses that figure. | Automatic, with the overhead test. |
+| Memory Configuration limit: whether the Sign takes exactly what note 1 allows. | The model's `memory_needed`, which on the 4120C adds 9 reserved bytes. | Automatic, needs erase permission: the largest File A beside File B is taken, one byte more is not. |
 
 ## Out of Scope
 
@@ -529,31 +545,18 @@ manual brings in the overrides field (extensibility rule 3).
 
 ## Remaining work
 
-Everything left needs a real Sign. Delete each item when it is done, and drop its
-**(waits for hardware)** marks.
+Everything left needs a real Sign. Delete each item when it is done.
 
-1. **Run the hardware suite on the 4120C.** Run `-m hardware` and `-m witness` with
-   capture, erase, and re-address allowed. Record each checklist result in
-   [hardware-results.md](hardware-results.md). At the first result that disagrees
-   with the manual, add the overrides field to `SignModel` and use it in the 4120C
-   profile (extensibility rule 3).
-2. **Replace the hand-summed Response vectors with captures.** Three canned Responses
-   in the tests (two Network Query answers and one Serial Error Status Response) are
-   marked `# PROVISIONAL`. Replace each with captured bytes, cited as captured from a
-   4120C with its firmware and date. Discovery needs answers from two Sign Addresses:
-   use the re-address capture, or else one captured answer at two places in the
-   stream.
+1. **Programmable tone repeats.** Run the witnessed tone test
+   (`-m witness -s -k tone_repeats`) and record whether `R` counts the first play in
+   [hardware-results.md](hardware-results.md).
 
 ## Further Notes
 
 ### Open questions
 
-- **Reads to more than one Sign.** `query` says to use one Sign Address per Sign, but
-  nothing stops a read sent to address 0 or a `?` pattern. With more than one Sign on
-  the line, their answers collide. Should `Sign` refuse a read to a broadcast or
-  wildcard Recipient, as `set_sign_address` will refuse broadcast?
-- **Overhead per DOTS PICTURE File** and the **two-digit year on Alpha 1.0**: open
-  until the hardware checklist answers them.
+- **NEWS FLASH and TRUMPET on a BetaBrite 1036**: whether it wants the letters or
+  hex 3AH/3BH. No test of one is planned; the library sends the letters.
 
 ### Future projects
 

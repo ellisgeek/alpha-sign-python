@@ -31,13 +31,13 @@ from alpha_led_sign.protocol.message import Frame, Message
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
 
-def test_4120c_profile_matches_table_5_table_3_and_the_brochure() -> None:
+def test_4120c_profile_matches_table_5_table_3_the_brochure_and_the_hardware() -> None:
     model = models.ALPHA_4120C
 
     assert model.name == "4120C"
     assert model.sign_type == "a"
     assert (model.columns, model.rows, model.lines) == (120, 16, 2)
-    assert model.memory_bytes == 28_000
+    assert model.memory_bytes == 28_872  # measured; the brochure says 28,000 (hardware-results.md)
     assert model.max_messages == 81
     assert model.protocol_versions == {ProtocolVersion.EZ_KEY_II, ProtocolVersion.ALPHA_1_0}
 
@@ -54,21 +54,22 @@ def test_4120c_capabilities_come_from_the_4000_series_rows_of_tables_68_to_70() 
 
 
 @pytest.mark.parametrize(
-    ("name", "sign_type", "columns"),
+    ("name", "sign_type", "columns", "memory_bytes"),
     [
-        ("4080C", "t", 80),
-        ("4120C", "a", 120),
-        ("4120R", "g", 120),
-        ("4160C", "b", 160),
-        ("4160R", "h", 160),
-        ("4200C", "c", 200),
-        ("4200R", "i", 200),
-        ("4240C", "d", 240),
-        ("4240R", "j", 240),
+        ("4080C", "t", 80, 28_000),
+        # The 4120C reported 28,872 bytes in General Information (hardware-results.md).
+        ("4120C", "a", 120, 28_872),
+        ("4120R", "g", 120, 28_000),
+        ("4160C", "b", 160, 28_000),
+        ("4160R", "h", 160, 28_000),
+        ("4200C", "c", 200, 28_000),
+        ("4200R", "i", 200, 28_000),
+        ("4240C", "d", 240, 28_000),
+        ("4240R", "j", 240, 28_000),
     ],
 )
-def test_4000_series_models_match_table_5_and_the_brochure(
-    name: str, sign_type: str, columns: int
+def test_4000_series_models_match_table_5_the_brochure_and_the_hardware(
+    name: str, sign_type: str, columns: int, memory_bytes: int
 ) -> None:
     model = models.get(name)
 
@@ -78,7 +79,7 @@ def test_4000_series_models_match_table_5_and_the_brochure(
         columns,
         16,
     )
-    assert (model.lines, model.memory_bytes, model.max_messages) == (2, 28_000, 81)
+    assert (model.lines, model.memory_bytes, model.max_messages) == (2, memory_bytes, 81)
     assert model.series == "4000 Series"
 
 
@@ -200,49 +201,75 @@ def configure(*files: TextFile | StringFile | DotsPictureFile) -> SetMemoryConfi
     return SetMemoryConfiguration(files)
 
 
-def test_a_memory_configuration_that_fills_the_4120c_exactly_passes() -> None:
-    # Table 5 and the brochure: 28,000 bytes. p. 27, note 1: 11 bytes of overhead per File.
+# The 4120C edges below are the largest TEXT File "A" the Sign accepted beside one other
+# File, found by bisection on a 4120C (hardware-results.md, "Memory Configuration limit").
+
+
+def test_a_memory_configuration_at_the_4120cs_measured_limit_passes() -> None:
+    files = (TextFile("A", size=28_741), TextFile("B", size=100))
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        validate(models.ALPHA_4120C, [configure(TextFile("A", size=27_989))], strict=True)
+        validate(models.ALPHA_4120C, [configure(*files)], strict=True)
 
 
-def test_a_memory_configuration_too_big_for_the_4120c_raises_in_strict_mode() -> None:
-    with pytest.raises(UnsupportedCapability, match=r"28,000 bytes.*needs 28,001"):
-        validate(models.ALPHA_4120C, [configure(TextFile("A", size=27_990))], strict=True)
+def test_one_byte_past_the_4120cs_measured_limit_raises_in_strict_mode() -> None:
+    files = (TextFile("A", size=28_742), TextFile("B", size=100))
+    with pytest.raises(UnsupportedCapability, match=r"28,872 bytes.*needs 28,873"):
+        validate(models.ALPHA_4120C, [configure(*files)], strict=True)
 
 
-def test_a_memory_configuration_too_big_for_the_4120c_warns_otherwise() -> None:
+def test_one_byte_past_the_4120cs_measured_limit_warns_otherwise() -> None:
+    files = (TextFile("A", size=28_742), StringFile("T", size=100))
     with pytest.warns(UnsupportedCapabilityWarning, match="memory"):
-        validate(models.ALPHA_4120C, [configure(TextFile("A", size=27_990))])
+        validate(models.ALPHA_4120C, [configure(*files)])
 
 
-def test_every_file_counts_its_overhead_but_dots_picture_sizes_do_not() -> None:
+@pytest.mark.parametrize(
+    ("rows", "columns", "largest_a"),
+    [(16, 16, 28_775), (16, 120, 28_359)],
+)
+def test_a_dots_picture_file_counts_its_measured_size_on_the_4120c(
+    rows: int, columns: int, largest_a: int
+) -> None:
+    picture = DotsPictureFile("P", rows=rows, columns=columns)
+
+    validate(models.ALPHA_4120C, [configure(TextFile("A", size=largest_a), picture)], strict=True)
+    with pytest.raises(UnsupportedCapability, match="memory"):
+        validate(
+            models.ALPHA_4120C,
+            [configure(TextFile("A", size=largest_a + 1), picture)],
+            strict=True,
+        )
+
+
+def test_every_file_counts_its_overhead_but_dots_picture_sizes_do_not_by_the_manual() -> None:
     # p. 27, note 1 leaves DOTS PICTURE sizes out of the sum; their overhead is counted.
+    # The 4080C has no hardware measurements, so the manual's rule applies to it.
     files = (
         TextFile("A", size=27_966),
         StringFile("T", size=1),
-        DotsPictureFile("p", rows=16, columns=120),
+        DotsPictureFile("p", rows=16, columns=80),
     )
-    validate(models.ALPHA_4120C, [configure(*files)], strict=True)  # 27,966 + 1 + 3 x 11 = 28,000
+    validate(models.ALPHA_4080C, [configure(*files)], strict=True)  # 27,966 + 1 + 3 x 11 = 28,000
 
     with pytest.raises(UnsupportedCapability, match="memory"):
         validate(
-            models.ALPHA_4120C, [configure(TextFile("A", size=27_967), *files[1:])], strict=True
+            models.ALPHA_4080C, [configure(TextFile("A", size=27_967), *files[1:])], strict=True
         )
 
 
 def test_a_last_text_file_of_size_0_counts_only_its_overhead() -> None:
     files = (TextFile("B", size=27_978), TextFile("A", size=0))  # 27,978 + 2 x 11 = 28,000
 
-    validate(models.ALPHA_4120C, [configure(*files)], strict=True)
+    validate(models.ALPHA_4080C, [configure(*files)], strict=True)
 
 
 def test_the_overhead_per_file_is_model_data() -> None:
     model = replace(models.ALPHA_4120C, file_overhead=13)  # the readerboard project's figure
+    files = (TextFile("A", size=28_741), TextFile("B", size=100))
 
     with pytest.raises(UnsupportedCapability, match="memory"):
-        validate(model, [configure(TextFile("A", size=27_989))], strict=True)
+        validate(model, [configure(*files)], strict=True)
 
 
 def test_memory_is_not_checked_when_the_models_size_is_unknown() -> None:

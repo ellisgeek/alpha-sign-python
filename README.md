@@ -78,14 +78,19 @@ from alpha_led_sign import discover
 discover(sign.transport, max_address=15)  # Signs and their Sign Addresses
 ```
 
+Every Sign that matches the address answers a read, so reads to Sign Address 0
+(the default) or a `?` pattern raise `ValueError`. Give the Sign's own address, or
+pass `broadcast_reads=True` when only one Sign is on the line.
+
 Discovery waits 1 s plus 0.5 s for each address searched, because each Sign
 answers in turn. Lower `max_address` when the addresses are known to be small.
 
 ## Status
 
-The offline tests pass, but the library has not yet been run against a real sign.
-The hardware checklist in [docs/spec.md](docs/spec.md) lists what still needs
-confirmation. To run the hardware tests:
+The library has been run against a real 4120C. What it found, item by item against
+the manual, is in [docs/hardware-results.md](docs/hardware-results.md); the hardware
+checklist in [docs/spec.md](docs/spec.md) lists what still needs confirmation. To
+run the hardware tests:
 
 ```sh
 ALPHA_SIGN_PORT=/dev/tty.usbserial-1410 uv run pytest -m hardware

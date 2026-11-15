@@ -110,7 +110,7 @@ describe("Modes the Emulator does not draw yet", () => {
   });
 
   it("accept NEWS FLASH as the newsFlashTrumpetForm Reading says (Table 66)", () => {
-    const at = (form: "letters" | "hex" | "both", specifier: string) =>
+    const at = (form: "letters" | "hex" | "both" | "none", specifier: string) =>
       buildDisplay(stateWith({ text: { A: `${ESC}0n${specifier}` } }), model4120C, RESTART_MS + 5, {
         ...DEFAULT_READINGS,
         newsFlashTrumpetForm: form,
@@ -120,6 +120,9 @@ describe("Modes the Emulator does not draw yet", () => {
     expect(at("letters", ";")).toBeNull();
     expect(at("hex", "B")).toBeNull();
     expect(at("hex", ";")).toBe("TRUMPET");
+    // A 4120C played neither form (docs/hardware-results.md): the default.
+    expect(at("none", "A")).toBeNull();
+    expect(at("none", ";")).toBeNull();
   });
 
   it("a Message with no Mode Field draws as HOLD named AUTOMODE", () => {

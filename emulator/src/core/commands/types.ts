@@ -35,11 +35,12 @@ export interface CommandContext {
    * Queues a Response Packet. `body` is everything between STX and ETX: the
    * Command Code the Sign returns and its data, e.g. "A" + label + content for a
    * TEXT File read (Table 14, p. 19) or "E" + label + data for a special
-   * function read (Table 18, p. 36). The framing (20 NULs, SOH, "000", STX, ETX,
-   * Checksum, EOT) is added for you. The Response leaves `delayMs` after the
-   * Packet's EOT; if the Packet never ends with EOT, it is never sent.
+   * function read (Table 18, p. 36). The framing (NULs, SOH, "000", STX, ETX,
+   * Checksum, EOT) is added for you, unless `bare` is set. The Response leaves
+   * `delayMs` after the Packet's EOT; if the Packet never ends with EOT, it is never
+   * sent.
    */
-  respond(body: string, options?: { delayMs?: number }): void;
+  respond(body: string, options?: { delayMs?: number; bare?: boolean }): void;
   /** Records dropped input in the snapshot's `ignored`. */
   ignore(reason: IgnoreReason, detail?: string, bytes?: string): void;
   /** ORs a `SerialError` bit into the Serial Error Status Register. */

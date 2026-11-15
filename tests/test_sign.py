@@ -210,12 +210,12 @@ def test_read_string_and_serial_errors() -> None:
     transport = FakeTransport(
         responses=[
             NULS + b"\x01000\x02G28,234,000\x030237\x04",  # Table 59
-            # PROVISIONAL: hand-summed; replace with a capture from a real Sign.
+            # Captured from a 4120C (firmware 10184403 rev O (1206)) on 2026-11-15.
             # Register 40H means no errors (p. 31).
-            NULS + b"\x01000\x02E*@\x03" + b"00B4" + b"\x04",
+            b"\x00" * 26 + b"\x01000\x02E*@\x0300B4\x04",
         ]
     )
-    sign = Sign(transport)
+    sign = Sign(transport, broadcast_reads=True)
 
     assert sign.read_string("2") == ("8,234,000",)
     assert sign.serial_errors().ok
@@ -225,7 +225,7 @@ def test_a_sign_that_does_not_answer_raises_sign_timeout() -> None:
     transport = FakeTransport(responses=[NULS + b"\x01000\x02ACFI"])
 
     with pytest.raises(SignTimeoutError):
-        Sign(transport).read_text("C")
+        Sign(transport, broadcast_reads=True).read_text("C")
 
 
 TABLE_46 = NULS + b"\x01000\x02ACFILE C\x03020C\x04"  # Read TEXT "C"
@@ -235,7 +235,7 @@ TABLE_59 = NULS + b"\x01000\x02G28,234,000\x030237\x04"  # Read STRING "2"
 
 def test_a_late_answer_to_an_earlier_read_is_skipped() -> None:
     transport = FakeTransport()
-    sign = Sign(transport)
+    sign = Sign(transport, broadcast_reads=True)
     with pytest.raises(SignTimeoutError):
         sign.read_string("2")
 
@@ -248,12 +248,14 @@ def test_an_answer_already_waiting_is_discarded_before_a_read_is_sent() -> None:
     garbled = NULS + b"\x01000\x02ACFILE C\x03020D\x04"  # Table 46 with a bad checksum
     transport = FakeTransport(waiting=[garbled], responses=[TABLE_46])
 
-    assert Sign(transport).read_text("C") == Message(Frame(None, content="FILE C"))
+    assert Sign(transport, broadcast_reads=True).read_text("C") == Message(
+        Frame(None, content="FILE C")
+    )
 
 
 def test_the_rest_of_a_response_that_began_before_a_read_is_skipped() -> None:
     transport = FakeTransport(responses=[TABLE_54 + TABLE_59[:26]])
-    sign = Sign(transport)
+    sign = Sign(transport, broadcast_reads=True)
     assert sign.query(ReadDayOfWeek()) == Weekday.FRIDAY
 
     transport.responses = [TABLE_59[26:], TABLE_46]
@@ -265,12 +267,12 @@ def test_a_response_to_another_read_raises_when_no_other_read_is_waiting() -> No
     transport = FakeTransport(responses=[TABLE_59, TABLE_46])
 
     with pytest.raises(UnexpectedResponseError):
-        Sign(transport).read_text("C")
+        Sign(transport, broadcast_reads=True).read_text("C")
 
 
 def test_only_as_many_responses_are_skipped_as_reads_went_unanswered() -> None:
     transport = FakeTransport()
-    sign = Sign(transport)
+    sign = Sign(transport, broadcast_reads=True)
     with pytest.raises(SignTimeoutError):
         sign.read_string("2")
 
@@ -285,7 +287,7 @@ def test_a_garbled_answer_raises_instead_of_being_skipped() -> None:
     transport = FakeTransport(responses=[bad_checksum])
 
     with pytest.raises(ResponseError, match="checksum"):
-        Sign(transport).read_text("C")
+        Sign(transport, broadcast_reads=True).read_text("C")
 
 
 def _checksumless_4120c(address: int | str = 1) -> tuple[Sign, FakeTransport]:
@@ -378,3 +380,27 @@ def test_set_sign_address_reaches_every_sign_when_asked() -> None:
     # Table 15, "7" (p. 26), sent to Sign Address 00, which every Sign hears (p. 11).
     assert transport.written == SYNC + b"\x01a00\x02E72F\x04"
     assert sign.recipient.address == 0x2F
+
+
+@pytest.mark.parametrize("address", [0, "1?", "??"])
+def test_a_read_to_a_recipient_that_reaches_several_signs_is_refused(
+    address: int | str,
+) -> None:
+    # Every matching Sign answers a read, and their answers collide on the line.
+    sign, transport = _checksumless_4120c(address)
+
+    with pytest.raises(ValueError, match="broadcast_reads=True"):
+        sign.read_text("C")
+
+    assert transport.events == []
+
+
+def test_a_read_to_a_recipient_that_reaches_several_signs_is_sent_when_asked() -> None:
+    transport = FakeTransport(responses=[TABLE_46])
+    sign = Sign(transport, checksum=False, broadcast_reads=True)
+
+    message = sign.read_text("C")
+
+    # Table 45, sent to Sign Address 00.
+    assert transport.written == SYNC + b"\x01Z00\x02BC\x04"
+    assert message == Message(Frame(None, content="FILE C"))  # Table 46

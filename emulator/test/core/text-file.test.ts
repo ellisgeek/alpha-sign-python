@@ -1,7 +1,7 @@
 // Write and read TEXT File (pp. 17-20), with the Appendix F Packets.
 import { describe, expect, it } from "vitest";
 import { createLine, model4120C } from "../../src/core";
-import { bytes, oneSign, START_CLOCK_MS, SYNC } from "./helpers";
+import { bytes, NULS_4120C, oneSign, START_CLOCK_MS, SYNC } from "./helpers";
 
 describe("Write TEXT File", () => {
   it("writes TEXT File A at power-up with Table 38 (p. 58, and p. 17: File A at power-up)", () => {
@@ -58,7 +58,7 @@ describe("Read TEXT File", () => {
     send(`${SYNC}\x01Z00\x02ACFILE C\x04`);
     // Table 45: <SOH>"Z00"<STX>"BC"<EOT>; Table 46 printed below.
     expect(send(`${SYNC}\x01Z00\x02BC\x04`)).toEqual([
-      `${"\x00".repeat(20)}\x01000\x02ACFILE C\x03020C\x04`,
+      `${NULS_4120C}\x01000\x02ACFILE C\x03020C\x04`,
     ]);
   });
 
@@ -68,10 +68,10 @@ describe("Read TEXT File", () => {
     const content = "\x1b a\x1a9\x7f\x1fHI\x10";
     send(`${SYNC}\x01Z00\x02AA${content}\x04`);
     const [reply] = send(`${SYNC}\x01Z00\x02BA\x04`);
-    // Table 14: twenty NULs, SOH, "000", STX, "A", File Label, the content, ETX.
-    expect(reply?.slice(0, 26)).toBe(`${"\x00".repeat(20)}\x01000\x02A`);
-    expect(reply?.slice(26, 27 + content.length)).toBe(`A${content}`);
-    expect(reply?.charAt(27 + content.length)).toBe("\x03");
+    // Table 14 (with the 4120C's 26 NULs): NULs, SOH, "000", STX, "A", File Label, the content, ETX.
+    expect(reply?.slice(0, 32)).toBe(`${NULS_4120C}\x01000\x02A`);
+    expect(reply?.slice(32, 33 + content.length)).toBe(`A${content}`);
+    expect(reply?.charAt(33 + content.length)).toBe("\x03");
   });
 
   it("sends nothing for a File that is not configured", () => {
@@ -106,10 +106,27 @@ describe("TEXT File writes the Memory Configuration does not allow", () => {
     expect(sign.snapshot().ignored.map((i) => i.reason)).toEqual(["illegal-file-label"]);
   });
 
-  // A 4-byte TEXT File "B" ("0004", p. 21) and a 6-byte write.
-  it("ignores a write larger than its File by default (Reading oversizedWrite)", () => {
+  // A real 4120C (docs/hardware-results.md): into a 10-byte TEXT File B, a 13-byte write
+  // kept its first 11 bytes and set the buffer overflow bit (08H, p. 31); a 10-byte
+  // write was kept whole with no bit set.
+  it("keeps the first size + 1 bytes of a write larger than its File, and flags it", () => {
     const { sign, send } = oneSign();
-    send(`${SYNC}\x01Z00\x02E$BAU0004FF00\x04`);
+    send(`${SYNC}\x01Z00\x02E$AAU0100FF00BAU000AFF00\x04`);
+    send(`${SYNC}\x01Z00\x02AB\x1b0b0123456789\x04`);
+    expect(sign.snapshot().files.B?.data).toBe("\x1b0b01234567");
+    expect(sign.snapshot().serialErrors).toBe(0x48);
+
+    send(`${SYNC}\x01Z00\x02E4\x04`); // clear the register (p. 24)
+    send(`${SYNC}\x01Z00\x02AB\x1b0b0123456\x04`);
+    expect(sign.snapshot().files.B?.data).toBe("\x1b0b0123456");
+    expect(sign.snapshot().serialErrors).toBe(0x40);
+  });
+
+  // A 4-byte TEXT File "B" ("0004", p. 21) and a 6-byte write. File A comes first, so
+  // the unused memory goes to A, not B (p. 29, "#").
+  it("ignores a write larger than its File with Reading oversizedWrite = ignore", () => {
+    const { sign, send } = oneSign({ oversizedWrite: "ignore" });
+    send(`${SYNC}\x01Z00\x02E$AAU0100FF00BAU0004FF00\x04`);
     send(`${SYNC}\x01Z00\x02ABHELLO!\x04`);
     expect(sign.snapshot().files.B?.data).toBe("");
     expect(sign.snapshot().ignored.map((i) => i.reason)).toEqual(["oversized-write"]);
@@ -117,7 +134,7 @@ describe("TEXT File writes the Memory Configuration does not allow", () => {
 
   it("keeps the first bytes with Reading oversizedWrite = truncate", () => {
     const { sign, send } = oneSign({ oversizedWrite: "truncate" });
-    send(`${SYNC}\x01Z00\x02E$BAU0004FF00\x04`);
+    send(`${SYNC}\x01Z00\x02E$AAU0100FF00BAU0004FF00\x04`);
     send(`${SYNC}\x01Z00\x02ABHELLO!\x04`);
     expect(sign.snapshot().files.B?.data).toBe("HELL");
     expect(sign.snapshot().ignored).toEqual([]);
@@ -155,6 +172,6 @@ describe("Priority TEXT File (p. 20)", () => {
     const { send } = oneSign();
     send(`${SYNC}\x01Z00\x02A0URGENT\x04`);
     const [reply] = send(`${SYNC}\x01Z00\x02B0\x04`);
-    expect(reply?.slice(24, 33)).toBe("\x02A0URGENT");
+    expect(reply?.slice(30, 39)).toBe("\x02A0URGENT"); // after the 4120C's 26 NULs
   });
 });
