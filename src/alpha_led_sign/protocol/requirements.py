@@ -1,113 +1,90 @@
-"""What each Mode, Display Position, and Control Code needs from a Sign Model.
+"""Requirements: what each Command and code needs from a Sign Model.
 
 The Capabilities are the columns of Tables 68-70; the Protocol Versions come from
 the tables that list each code.
 """
 
-from enum import Enum
-from typing import NamedTuple
+from dataclasses import dataclass
 
-from alpha_led_sign.protocol.codes import (
-    Attribute,
-    CharacterAttribute,
-    CharacterFlash,
-    Color,
-    Control,
-    CurrentDate,
-    CurrentTime,
-    DotsPictureRef,
-    DoubleHigh,
-    Font,
-    Mode,
-    Position,
-    Spacing,
-    SpecialGraphic,
-    SpecialMode,
-    Speed,
-    StringRef,
-    TrueDescenders,
-    Wide,
-)
+from alpha_led_sign.protocol.capabilities import Capability
+from alpha_led_sign.protocol.codes import Font, Mode, Position, SpecialGraphic, SpecialMode
+from alpha_led_sign.protocol.control_codes import kind_of
+from alpha_led_sign.protocol.memory import MemoryFile
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
 
-class Capability(Enum):
-    """One feature a Sign Model can or cannot use, one per column of Tables 68-70."""
-
-    # Table 68: Modes.
-    AUTOMODE = "automode"
-    FLASH = "flash"
-    HOLD = "hold"
-    INTERLOCK = "interlock"
-    ROLL = "roll up/down/left/right"
-    ROLL_IN_OUT = "roll in/out"
-    ROTATE = "rotate"
-    COMPRESSED_ROTATE = "compressed rotate"
-    SCROLL = "scroll"
-    SLIDE = "slide"
-    CYCLE_COLORS = "cycle colors"
-    SNOW = "snow"
-    SPARKLE = "sparkle"
-    SPRAY = "spray"
-    STARBURST = "starburst"
-    SWITCH = "switch"
-    TWINKLE = "twinkle"
-    WIPE = "wipe up/down/left/right"
-    WIPE_IN_OUT = "wipe in/out"
-    EXPLODE = "explode"
-    CLOCK = "clock"
-    LEFT_RIGHT_POSITION = "left/right display position"
-    # Table 69: fonts and colors.
-    FONT_FULL_HEIGHT = "15/16-row font"
-    FONT_FULL_HEIGHT_FANCY = "15/16-row fancy font"
-    FONT_TEN_HIGH = "10-row font"
-    FONT_SEVEN_HIGH = "7-row font"
-    FONT_SEVEN_HIGH_FANCY = "7-row fancy font"
-    FONT_FIVE_HIGH = "5-row font"
-    COLOR = "color"
-    WIDE = "wide characters"
-    DOUBLE_WIDE = "double-wide characters"
-    CHARACTER_FLASH = "flashing characters"
-    DOUBLE_HIGH = "double-height characters"
-    TRUE_DESCENDERS = "true descenders"
-    FIXED_WIDTH = "fixed-width characters"
-    # Table 70: display options.
-    TIME = "time"
-    DATE = "date"
-    TEMPERATURE_FAHRENHEIT = "temperature in Fahrenheit"
-    TEMPERATURE_CELSIUS = "temperature in Celsius"
-    SPEED = "speed"
-    NEW_LINE = "new line"
-    NEW_PAGE = "new page"
-    ANIMATION = "animation"
-    STRING = "STRING File"
-    TICKER_SYMBOL = "ticker symbol"
-    VARIABLE = "variable"
-    COUNTER = "counter"
-    GRAPHIC = "graphic"
-    GIF = "GIF"
-    FLICK = "flick"
-    MESSAGE = "message"
-    # Not in the tables: Appendix G footnotes limit these to the BetaBrite model 1036.
-    BETABRITE_1036_FONTS = "BetaBrite 1036 fonts"
-    BETABRITE_1036_ANIMATIONS = "BetaBrite 1036 animations"
-
-
-class Requirement(NamedTuple):
-    """What a code needs from a Sign Model."""
+@dataclass(frozen=True)
+class VersionRequirement:
+    """``source`` needs a Sign that accepts ``version`` or later."""
 
     version: ProtocolVersion
-    """The earliest Protocol Version that has the code."""
-    capability: Capability | None
-    """The Capability it needs, or None when it needs none (such as a top-line Position)."""
+    source: object
 
 
-def requires(code: object) -> Requirement:
+@dataclass(frozen=True)
+class CapabilityRequirement:
+    """``source`` needs a Sign Model with ``capability``."""
+
+    capability: Capability
+    source: object
+
+
+@dataclass(frozen=True)
+class DisplaySizeRequirement:
+    """``source`` must fit a display ``columns`` x ``rows`` pixels (Table 70, note 1)."""
+
+    columns: int
+    rows: int
+    source: object
+
+
+@dataclass(frozen=True)
+class MemoryRequirement:
+    """A Memory Configuration of ``files`` must fit the Sign's memory (p. 27, note 1)."""
+
+    files: tuple[MemoryFile, ...]
+
+
+@dataclass(frozen=True)
+class FontPositionRequirement:
+    """``font``, taller than 7 rows, is shown in Display Position ``position``.
+
+    A two-line Sign "will 'size down'" such a font outside the Middle position (p. 96,
+    7.10.3.2.5), so the Sign Model decides whether it shows as written.
+    """
+
+    font: Font
+    position: Position
+
+
+type Requirement = (
+    VersionRequirement
+    | CapabilityRequirement
+    | DisplaySizeRequirement
+    | MemoryRequirement
+    | FontPositionRequirement
+)
+"""One thing a Command or code needs from a Sign Model to be shown as written."""
+
+
+TALL_FONTS = frozenset({Font.TEN_HIGH, Font.FULL_HEIGHT, Font.FULL_HEIGHT_FANCY})
+"""Fonts taller than 7 rows (Appendix G, p. 82; Appendix O)."""
+
+
+def requires(code: object) -> tuple[Requirement, ...]:
     """What ``code`` (a Mode, Display Position, or Control Code) needs from a Sign Model.
 
-    Codes the manual does not mark with a version work with every version.
+    Codes the manual does not mark with a version work with every version, so they
+    have no VersionRequirement; codes every Sign has have no CapabilityRequirement.
     """
-    return Requirement(_MIN_VERSIONS.get(code, ProtocolVersion.EZ_KEY_II), _capability(code))
+    found: list[Requirement] = []
+    version = _MIN_VERSIONS.get(code, ProtocolVersion.EZ_KEY_II)
+    if version > ProtocolVersion.EZ_KEY_II:
+        found.append(VersionRequirement(version, code))
+    capability = _capability(code)
+    if capability is not None:
+        found.append(CapabilityRequirement(capability, code))
+    return tuple(found)
 
 
 _MIN_VERSIONS: dict[object, ProtocolVersion] = {
@@ -158,32 +135,6 @@ _SPECIAL_MODES = {
     SpecialMode.CYCLE_COLORS: Capability.CYCLE_COLORS,
 }
 
-_FONTS = {
-    Font.FIVE_HIGH: Capability.FONT_FIVE_HIGH,
-    Font.SEVEN_HIGH: Capability.FONT_SEVEN_HIGH,
-    Font.SEVEN_HIGH_FANCY: Capability.FONT_SEVEN_HIGH_FANCY,
-    Font.TEN_HIGH: Capability.FONT_TEN_HIGH,
-    Font.FULL_HEIGHT_FANCY: Capability.FONT_FULL_HEIGHT_FANCY,
-    Font.FULL_HEIGHT: Capability.FONT_FULL_HEIGHT,
-    # Appendix G, p. 82, note 1: "only applies to Betabrite model 1036 signs."
-    Font.FIVE_STROKE: Capability.BETABRITE_1036_FONTS,
-    Font.SEVEN_STROKE: Capability.BETABRITE_1036_FONTS,
-    Font.SEVEN_SHADOW: Capability.BETABRITE_1036_FONTS,
-    Font.SEVEN_SHADOW_FANCY: Capability.BETABRITE_1036_FONTS,
-    Font.FIVE_WIDE: Capability.BETABRITE_1036_FONTS,
-    Font.SEVEN_WIDE: Capability.BETABRITE_1036_FONTS,
-    Font.SEVEN_FANCY_WIDE: Capability.BETABRITE_1036_FONTS,
-    Font.WIDE_STROKE_FIVE: Capability.BETABRITE_1036_FONTS,
-}
-
-_ATTRIBUTES = {
-    Attribute.WIDE: Capability.WIDE,
-    Attribute.DOUBLE_WIDE: Capability.DOUBLE_WIDE,
-    Attribute.DOUBLE_HIGH: Capability.DOUBLE_HIGH,
-    Attribute.TRUE_DESCENDERS: Capability.TRUE_DESCENDERS,
-    Attribute.FIXED_WIDTH: Capability.FIXED_WIDTH,
-}
-
 
 def _capability(code: object) -> Capability | None:
     match code:
@@ -192,38 +143,9 @@ def _capability(code: object) -> Capability | None:
         case SpecialMode():
             return _SPECIAL_MODES[code]
         case SpecialGraphic():
-            return Capability.ANIMATION
+            return Capability.ANIMATION  # Table 66
         case Position.LEFT | Position.RIGHT:
             return Capability.LEFT_RIGHT_POSITION
-        case Font():
-            return _FONTS[code]
-        case Color():
-            return Capability.COLOR
-        case Speed():
-            return Capability.SPEED
-        case Control.NEW_LINE:
-            return Capability.NEW_LINE
-        case Control.NEW_PAGE:
-            return Capability.NEW_PAGE
-        case Wide():
-            return Capability.WIDE
-        case DoubleHigh():
-            return Capability.DOUBLE_HIGH
-        case TrueDescenders():
-            return Capability.TRUE_DESCENDERS
-        case CharacterFlash():
-            return Capability.CHARACTER_FLASH
-        case CharacterAttribute(attribute=attribute):
-            return _ATTRIBUTES.get(attribute)
-        case Spacing.FIXED_WIDTH:
-            return Capability.FIXED_WIDTH
-        case CurrentTime():
-            return Capability.TIME
-        case CurrentDate():
-            return Capability.DATE
-        case StringRef():
-            return Capability.STRING
-        case DotsPictureRef():
-            return Capability.GRAPHIC
         case _:
-            return None
+            kind = kind_of(code)
+            return None if kind is None else kind.capability(code)

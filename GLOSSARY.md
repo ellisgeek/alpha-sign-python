@@ -20,6 +20,10 @@ _Avoid_: family, line
 One feature a Sign Model can or cannot use: a Mode, a font, a color, or a display option such as time or counters.
 _Avoid_: feature flag, support
 
+**Requirement**:
+One thing a Command or code needs from a Sign Model to be shown as written: a Protocol Version, a Capability, room in memory, or a display size.
+_Avoid_: need, constraint, support
+
 **Protocol Version**:
 One revision of the Alpha protocol (EZ KEY II, Alpha 1.0, 2.0, or 3.0). Each Sign Model accepts a known set of them, and later versions add Commands and Control Codes.
 _Avoid_: firmware version, protocol level

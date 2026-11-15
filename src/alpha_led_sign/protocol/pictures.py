@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
-from alpha_led_sign.protocol.response import ResponseError
+from alpha_led_sign.protocol.responses import ResponseError
 
 
 class PixelColor(Enum):

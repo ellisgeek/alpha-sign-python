@@ -27,6 +27,7 @@ import argparse
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from alpha_led_sign import (
     Color,
@@ -38,27 +39,20 @@ from alpha_led_sign import (
     SerialFormat,
     SerialTransport,
     Sign,
-    SignModel,
     StringFile,
     StringRef,
     TextFile,
     Transport,
     models,
 )
-from alpha_led_sign.protocol import Segment, requires
+
+if TYPE_CHECKING:
+    from alpha_led_sign.protocol import Segment
 
 EMULATOR = "socket://127.0.0.1:4120"  # the port `just emu-serve` opens
 BOARD, VALUE = "A", "V"
 STRING_SIZE = 64
 BITS_PER_BYTE = {SerialFormat.EIGHT_N_ONE: 10, SerialFormat.SEVEN_E_TWO: 11}
-
-
-def can_show(model: SignModel, code: object) -> bool:
-    """Whether ``model`` has ``code``, by the same rules ``Sign(strict=True)`` checks."""
-    version, capability = requires(code)
-    if version > max(model.protocol_versions):
-        return False
-    return capability is None or model.capabilities is None or capability in model.capabilities
 
 
 class MeteredTransport:
@@ -179,7 +173,7 @@ def main() -> None:
     throttle = args.url.startswith("socket://") and not args.no_throttle
     meter = MeteredTransport(port, 1 / line_bytes_per_second if throttle else None)
 
-    color: list[Segment] = [Color.GREEN] if can_show(model, Color.GREEN) else []
+    color: list[Segment] = [Color.GREEN] if model.can_show(Color.GREEN) else []
     board = Message(Frame(Mode.HOLD, Position.FILL, [*color, StringRef(VALUE)]))
 
     with Sign(meter, model=model, address=args.address, strict=True) as sign:

@@ -32,6 +32,7 @@ from alpha_led_sign.protocol.codes import (
     TrueDescenders,
     Wide,
 )
+from alpha_led_sign.protocol.control_codes import KINDS, examples
 from alpha_led_sign.protocol.message import Frame, Message, Segment, decode_message, encode_content
 
 
@@ -238,24 +239,22 @@ def test_a_read_message_round_trips_through_markup() -> None:
 
 
 EVERY_SEGMENT = [
-    *Color,
-    *Font,
-    *Speed,
-    *Spacing,
-    *Control,
-    *(CurrentDate(format) for format in DateFormat),
-    *(CharacterAttribute(attribute, on) for attribute in Attribute for on in (True, False)),
-    *(
-        kind(on)
-        for kind in (Wide, DoubleHigh, TrueDescenders, CharacterFlash)
-        for on in (True, False)
-    ),
-    CurrentTime(),
+    *(code for kind in KINDS for code in examples(kind)),
     StringRef("a"),
     DotsPictureRef("Z"),
     RawControl(b"\x08\x30"),
     "plain {braces}",
 ]
+
+
+@pytest.mark.parametrize(
+    "code",
+    [code for kind in KINDS if kind.type is not RawControl for code in examples(kind)],
+    ids=repr,
+)
+def test_every_known_control_code_has_a_spelling(code: Segment) -> None:
+    # A Control Code type added to the table without a markup token fails here.
+    assert not to_markup([code]).startswith("{raw")
 
 
 @pytest.mark.parametrize("segment", EVERY_SEGMENT, ids=repr)

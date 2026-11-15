@@ -13,8 +13,8 @@ from alpha_led_sign.protocol.message import Frame, Message
 from alpha_led_sign.protocol.packet import Chunk, Recipient, encode_packet
 from alpha_led_sign.protocol.pictures import DotsPicture
 from alpha_led_sign.protocol.requirements import Capability
-from alpha_led_sign.protocol.response import ResponseError, ResponseItem, UnexpectedResponseError
-from tests.fakes import FakeTransport
+from alpha_led_sign.protocol.responses import ResponseError, ResponseItem, UnexpectedResponseError
+from tests.fakes import FakeLine
 
 SYNC = b"\x00" * 5
 
@@ -193,7 +193,7 @@ def test_the_generic_model_does_not_check_pictures() -> None:
 
 
 def test_sign_writes_a_dots_picture_with_its_pause() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
 
     sign.write_dots_picture("A", DotsPicture.parse("12\n30"))
@@ -207,7 +207,7 @@ def test_sign_writes_a_dots_picture_with_its_pause() -> None:
 
 
 def test_sign_reads_a_dots_picture_with_command_code_j() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, model=models.ALPHA_4120C, address=1, checksum=False)
 
     with pytest.raises(SignTimeoutError):
@@ -227,6 +227,8 @@ def test_sign_reads_the_answer_a_4120c_gave() -> None:
         + b"000100000\r000000000\r000000000\r"
         + b"\x031BBE\x04"
     )
-    sign = Sign(FakeTransport(responses=[answer]), model=models.ALPHA_4120C, address=1)
+    line = FakeLine()
+    line.answer(b"JP", answer)  # Read DOTS PICTURE "P" (Table 23, p. 41)
+    sign = Sign(line, model=models.ALPHA_4120C, address=1)
 
     assert sign.read_dots_picture("P") == DotsPicture.parse("\n".join(TABLE_60_ROWS))

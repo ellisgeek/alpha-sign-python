@@ -2,7 +2,7 @@
 
 import pytest
 
-from alpha_led_sign.protocol.packet import (
+from alpha_led_sign.protocol.responses import (
     ResponseError,
     ResponseItem,
     ResponseReader,

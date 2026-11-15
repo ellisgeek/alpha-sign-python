@@ -1,4 +1,5 @@
-"""The Sign facade over FakeTransport: the Packets and pauses it sends."""
+"""The Sign facade over an in-memory Line: the Packets and pauses it sends, and how
+it reads the Responses a Sign sends back."""
 
 from datetime import datetime, time
 
@@ -20,15 +21,15 @@ from alpha_led_sign.protocol.codes import Color, Font, Mode, Position, StringRef
 from alpha_led_sign.protocol.commands import ReadDayOfWeek, TimeFormat, Tone
 from alpha_led_sign.protocol.memory import StringFile, TextFile
 from alpha_led_sign.protocol.message import Frame, Message
-from alpha_led_sign.protocol.response import ResponseError, UnexpectedResponseError
-from tests.fakes import FakeTransport
-from tests.vectors import TABLE_41
+from alpha_led_sign.protocol.responses import ResponseError, UnexpectedResponseError
+from tests.fakes import FakeLine
+from tests.vectors import NULS, TABLE_41, TABLE_46, TABLE_54, TABLE_59
 
 SYNC = b"\x00" * 5
 
 
 def test_a_checksummed_write_to_every_sign_matches_table_41() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport)  # the generic model: Sign Type Z, address 00
 
     sign.write_text("A", Message(Frame(None, content="HELLO")))
@@ -37,7 +38,7 @@ def test_a_checksummed_write_to_every_sign_matches_table_41() -> None:
 
 
 def test_show_writes_text_file_a_to_the_models_sign_type_with_a_mode_field() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
 
     sign.show("Hello")
@@ -47,7 +48,7 @@ def test_show_writes_text_file_a_to_the_models_sign_type_with_a_mode_field() -> 
 
 
 def test_set_clock_nests_time_date_and_weekday_with_pauses_after_each_stx() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
 
     sign.set_clock(datetime(2026, 11, 7, 14, 30, 59))  # a Saturday
@@ -64,7 +65,7 @@ def test_set_clock_nests_time_date_and_weekday_with_pauses_after_each_stx() -> N
 
 
 def test_beep_is_followed_by_three_seconds_of_silence() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
 
     Sign(transport).beep(Tone.THREE_BEEPS)
 
@@ -72,7 +73,7 @@ def test_beep_is_followed_by_three_seconds_of_silence() -> None:
 
 
 def test_strict_sign_refuses_unsupported_content_before_sending_anything() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, model=models.ALPHA_4120C, strict=True)
 
     with pytest.raises(UnsupportedCapability):
@@ -82,7 +83,7 @@ def test_strict_sign_refuses_unsupported_content_before_sending_anything() -> No
 
 
 def test_advisory_sign_warns_and_sends_anyway() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, model=models.ALPHA_4120C)
 
     with pytest.warns(UnsupportedCapabilityWarning):
@@ -91,9 +92,9 @@ def test_advisory_sign_warns_and_sends_anyway() -> None:
     assert b"\x1b0tsqueezed" in transport.written
 
 
-def unchecked_sign() -> tuple[Sign, FakeTransport]:
+def unchecked_sign() -> tuple[Sign, FakeLine]:
     """A GENERIC Sign (Sign Type Z, address 0) without checksums, to match Appendix F."""
-    transport = FakeTransport()
+    transport = FakeLine()
     return Sign(transport, checksum=False), transport
 
 
@@ -154,7 +155,7 @@ def test_memory_and_housekeeping_commands() -> None:
 
 
 def test_sign_closes_its_transport_when_used_as_a_context_manager() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
 
     with Sign(transport) as sign:
         sign.show("hi")
@@ -175,7 +176,7 @@ def test_the_readme_example_runs() -> None:
         TextFile,
     )
 
-    transport = FakeTransport()
+    transport = FakeLine()
     with Sign(transport, model=models.ALPHA_4120C) as sign:
         sign.show("Hello")
         sign.configure_memory([TextFile("A", size=512), StringFile("T", size=16)])
@@ -194,11 +195,9 @@ def test_the_readme_example_runs() -> None:
     assert transport.written.count(SYNC) == 7
 
 
-NULS = b"\x00" * 20
-
-
 def test_read_text_sends_the_read_then_parses_the_response() -> None:
-    transport = FakeTransport(responses=[NULS + b"\x01000\x02ACFI", b"LE C\x03020C\x04"])
+    transport = FakeLine()
+    transport.answer(b"BC", NULS + b"\x01000\x02ACFI", b"LE C\x03020C\x04")
     sign = Sign(transport, address=6, checksum=False)
 
     message = sign.read_text("C")
@@ -208,14 +207,11 @@ def test_read_text_sends_the_read_then_parses_the_response() -> None:
 
 
 def test_read_string_and_serial_errors() -> None:
-    transport = FakeTransport(
-        responses=[
-            NULS + b"\x01000\x02G28,234,000\x030237\x04",  # Table 59
-            # Captured from a 4120C (firmware 10184403 rev O (1206)) on 2026-11-15.
-            # Register 40H means no errors (p. 31).
-            b"\x00" * 26 + b"\x01000\x02E*@\x0300B4\x04",
-        ]
-    )
+    transport = FakeLine()
+    transport.answer(b"H2", TABLE_59)
+    # Captured from a 4120C (firmware 10184403 rev O (1206)) on 2026-11-15. Register
+    # 40H means no errors (p. 31).
+    transport.answer(b"F*", b"\x00" * 26 + b"\x01000\x02E*@\x0300B4\x04")
     sign = Sign(transport, broadcast_reads=True)
 
     assert sign.read_string("2") == ("8,234,000",)
@@ -223,31 +219,29 @@ def test_read_string_and_serial_errors() -> None:
 
 
 def test_a_sign_that_does_not_answer_raises_sign_timeout() -> None:
-    transport = FakeTransport(responses=[NULS + b"\x01000\x02ACFI"])
+    transport = FakeLine()
+    transport.answer(b"BC", NULS + b"\x01000\x02ACFI")
 
     with pytest.raises(SignTimeoutError):
         Sign(transport, broadcast_reads=True).read_text("C")
 
 
-TABLE_46 = NULS + b"\x01000\x02ACFILE C\x03020C\x04"  # Read TEXT "C"
-TABLE_54 = NULS + b"\x01000\x02E&6\x0300A6\x04"  # Read day of week
-TABLE_59 = NULS + b"\x01000\x02G28,234,000\x030237\x04"  # Read STRING "2"
-
-
 def test_a_late_answer_to_an_earlier_read_is_skipped() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, broadcast_reads=True)
     with pytest.raises(SignTimeoutError):
         sign.read_string("2")
 
-    transport.responses = [TABLE_59, TABLE_46]
+    transport.answer(b"BC", TABLE_59, TABLE_46)  # the late answer comes first
 
     assert sign.read_text("C") == Message(Frame(None, content="FILE C"))
 
 
 def test_an_answer_already_waiting_is_discarded_before_a_read_is_sent() -> None:
     garbled = NULS + b"\x01000\x02ACFILE C\x03020D\x04"  # Table 46 with a bad checksum
-    transport = FakeTransport(waiting=[garbled], responses=[TABLE_46])
+    transport = FakeLine()
+    transport.arrive(garbled)
+    transport.answer(b"BC", TABLE_46)
 
     assert Sign(transport, broadcast_reads=True).read_text("C") == Message(
         Frame(None, content="FILE C")
@@ -255,29 +249,31 @@ def test_an_answer_already_waiting_is_discarded_before_a_read_is_sent() -> None:
 
 
 def test_the_rest_of_a_response_that_began_before_a_read_is_skipped() -> None:
-    transport = FakeTransport(responses=[TABLE_54 + TABLE_59[:26]])
+    transport = FakeLine()
+    transport.answer(b"F&", TABLE_54 + TABLE_59[:26])
     sign = Sign(transport, broadcast_reads=True)
     assert sign.query(ReadDayOfWeek()) == Weekday.FRIDAY
 
-    transport.responses = [TABLE_59[26:], TABLE_46]
+    transport.answer(b"BC", TABLE_59[26:], TABLE_46)
 
     assert sign.read_text("C") == Message(Frame(None, content="FILE C"))
 
 
 def test_a_response_to_another_read_raises_when_no_other_read_is_waiting() -> None:
-    transport = FakeTransport(responses=[TABLE_59, TABLE_46])
+    transport = FakeLine()
+    transport.answer(b"BC", TABLE_59, TABLE_46)
 
     with pytest.raises(UnexpectedResponseError):
         Sign(transport, broadcast_reads=True).read_text("C")
 
 
 def test_only_as_many_responses_are_skipped_as_reads_went_unanswered() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, broadcast_reads=True)
     with pytest.raises(SignTimeoutError):
         sign.read_string("2")
 
-    transport.responses = [TABLE_59, TABLE_59, TABLE_46]
+    transport.answer(b"BC", TABLE_59, TABLE_59, TABLE_46)
 
     with pytest.raises(UnexpectedResponseError):
         sign.read_text("C")
@@ -285,15 +281,16 @@ def test_only_as_many_responses_are_skipped_as_reads_went_unanswered() -> None:
 
 def test_a_garbled_answer_raises_instead_of_being_skipped() -> None:
     bad_checksum = NULS + b"\x01000\x02ACFILE C\x03020D\x04"
-    transport = FakeTransport(responses=[bad_checksum])
+    transport = FakeLine()
+    transport.answer(b"BC", bad_checksum)
 
     with pytest.raises(ResponseError, match="checksum"):
         Sign(transport, broadcast_reads=True).read_text("C")
 
 
-def _checksumless_4120c(address: int | str = 1) -> tuple[Sign, FakeTransport]:
+def _checksumless_4120c(address: int | str = 1) -> tuple[Sign, FakeLine]:
     """A 4120C at ``address`` that sends without checksums."""
-    transport = FakeTransport()
+    transport = FakeLine()
     return Sign(transport, model=models.ALPHA_4120C, address=address, checksum=False), transport
 
 
@@ -397,7 +394,8 @@ def test_a_read_to_a_recipient_that_reaches_several_signs_is_refused(
 
 
 def test_a_read_to_a_recipient_that_reaches_several_signs_is_sent_when_asked() -> None:
-    transport = FakeTransport(responses=[TABLE_46])
+    transport = FakeLine()
+    transport.answer(b"BC", TABLE_46)
     sign = Sign(transport, checksum=False, broadcast_reads=True)
 
     message = sign.read_text("C")
@@ -411,7 +409,7 @@ def test_a_read_to_a_recipient_that_reaches_several_signs_is_sent_when_asked() -
 
 
 def test_show_reads_markup() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
 
     sign.show("{color red}Hi {{x}}")
@@ -421,7 +419,7 @@ def test_show_reads_markup() -> None:
 
 
 def test_show_uses_its_mode_until_the_first_frame_token() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
 
     sign.show("A{frame hold bottom}B", mode=Mode.ROTATE, position=Position.TOP)
@@ -431,7 +429,7 @@ def test_show_uses_its_mode_until_the_first_frame_token() -> None:
 
 
 def test_a_str_inside_a_segment_list_stays_literal() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
 
     sign.show(["{color red}"])
@@ -440,7 +438,7 @@ def test_a_str_inside_a_segment_list_stays_literal() -> None:
 
 
 def test_write_text_and_priority_read_markup() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
 
     sign.write_text("B", "{frame}{time}")
@@ -453,7 +451,7 @@ def test_write_text_and_priority_read_markup() -> None:
 
 
 def test_write_string_reads_markup_but_refuses_frames() -> None:
-    transport = FakeTransport()
+    transport = FakeLine()
     sign = Sign(transport, model=models.ALPHA_4120C, checksum=False)
 
     sign.write_string("T", "{color amber}72")

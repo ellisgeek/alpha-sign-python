@@ -1,7 +1,9 @@
 """Sign Models: profiles from the manual and brochure, and validation against them."""
 
 import warnings
-from dataclasses import replace
+from collections.abc import Iterator
+from dataclasses import dataclass, replace
+from typing import ClassVar
 
 import pytest
 
@@ -13,6 +15,8 @@ from alpha_led_sign.models import (
     validate,
 )
 from alpha_led_sign.protocol.codes import (
+    Attribute,
+    CharacterAttribute,
     Color,
     Control,
     ControlCode,
@@ -25,9 +29,14 @@ from alpha_led_sign.protocol.codes import (
     SpecialMode,
     StringRef,
 )
-from alpha_led_sign.protocol.commands import SetMemoryConfiguration, WriteString, WriteText
+from alpha_led_sign.protocol.commands import Command, SetMemoryConfiguration, WriteString, WriteText
 from alpha_led_sign.protocol.memory import DotsPictureFile, StringFile, TextFile
 from alpha_led_sign.protocol.message import Frame, Message
+from alpha_led_sign.protocol.requirements import (
+    CapabilityRequirement,
+    DisplaySizeRequirement,
+    Requirement,
+)
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
 
@@ -87,6 +96,22 @@ def test_red_4000_series_models_have_no_color_but_tricolor_ones_do() -> None:
     # Table 69, note 1: models ending in R display red only.
     assert Capability.COLOR not in (models.get("4120R").capabilities or ())
     assert Capability.COLOR in (models.get("4120C").capabilities or ())
+
+
+def test_4000_series_models_have_the_auxiliary_port_and_no_shadow_characters() -> None:
+    # Appendix G, p. 82: the Auxiliary Port attribute is for "Series 4000 & 7000 signs
+    # only"; Shadow characters for the "Betabrite model 1036 and AlphaPremiere 9000".
+    for name in ("4080C", "4120C", "4120R", "4240R"):
+        capabilities = models.get(name).capabilities or frozenset()
+        assert Capability.AUXILIARY_PORT in capabilities
+        assert Capability.SHADOW not in capabilities
+
+
+def test_the_betabrite_profile_has_neither_the_auxiliary_port_nor_shadow_characters() -> None:
+    # The profile is the BetaBrite row of Tables 68-70, not the model 1036 (Appendix G).
+    capabilities = models.BETABRITE.capabilities or frozenset()
+    assert Capability.AUXILIARY_PORT not in capabilities
+    assert Capability.SHADOW not in capabilities
 
 
 def test_betabrite_uses_its_own_rows_of_the_matrices() -> None:
@@ -161,10 +186,17 @@ def test_advisory_validation_warns_once_per_problem_and_carries_on() -> None:
 
 @pytest.mark.parametrize(
     "code",
-    [Control.NEW_PAGE, DoubleHigh(), Font.SEVEN_SHADOW, Font.TEN_HIGH],
+    [
+        Control.NEW_PAGE,
+        DoubleHigh(),
+        Font.SEVEN_SHADOW,
+        Font.TEN_HIGH,
+        CharacterAttribute(Attribute.SHADOW),
+    ],
 )
 def test_control_codes_the_4120c_lacks_are_reported(code: ControlCode) -> None:
-    # Tables 69-70 (4000 Series row), and Appendix G footnote 1 (BetaBrite 1036 fonts).
+    # Tables 69-70 (4000 Series row), Appendix G footnote 1 (BetaBrite 1036 fonts), and
+    # Appendix G, p. 82 (Shadow characters).
     with pytest.raises(UnsupportedCapability):
         validate(models.ALPHA_4120C, [write(Frame(Mode.HOLD, Position.FILL, [code]))], strict=True)
 
@@ -190,6 +222,37 @@ def test_generic_model_does_not_check_capabilities() -> None:
     command = write(Frame(Mode.COMPRESSED_ROTATE, Position.FILL, [DoubleHigh(), "hi"]))
 
     validate(models.GENERIC, [command], strict=True)
+
+
+@dataclass(frozen=True)
+class FutureCommand(Command):
+    """A Command this module has never heard of, standing in for one added later."""
+
+    code: ClassVar[str] = "?"
+
+    def encode_data(self) -> bytes:
+        return b""
+
+    def requirements(self) -> Iterator[Requirement]:
+        yield CapabilityRequirement(Capability.DOUBLE_HIGH, self)  # Table 69
+        yield DisplaySizeRequirement(500, 1, self)
+
+
+def test_any_command_is_checked_by_what_it_requires_alone() -> None:
+    # Commands are an open set (docs/spec.md): a new one needs no change here.
+    with pytest.raises(UnsupportedCapability) as raised:
+        validate(models.ALPHA_4120C, [FutureCommand()], strict=True)
+
+    assert "double-height characters (FutureCommand)" in str(raised.value)
+    assert "120 x 16 pixels" in str(raised.value)
+
+
+def test_a_model_can_show_a_code_only_when_it_meets_every_requirement() -> None:
+    assert models.ALPHA_4120C.can_show(Color.GREEN)
+    assert not models.ALPHA_4120R.can_show(Color.GREEN)  # Table 69, note 1
+    assert not models.ALPHA_4120C.can_show(Mode.COMPRESSED_ROTATE)  # Table 68
+    assert not models.GENERIC.can_show(Mode.EXPLODE)  # Table 65: Alpha 3.0
+    assert models.GENERIC.can_show(DoubleHigh())  # no Capability checks
 
 
 def test_string_file_content_is_validated_too() -> None:

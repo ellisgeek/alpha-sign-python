@@ -44,7 +44,7 @@ from alpha_led_sign import (
     TimeFormat,
     models,
 )
-from alpha_led_sign.protocol import Segment, requires
+from alpha_led_sign.protocol import Segment
 
 EMULATOR = "socket://127.0.0.1:4120"  # the port `just emu-serve` opens
 
@@ -53,19 +53,11 @@ RAINBOW = [Color.RED, Color.ORANGE, Color.YELLOW, Color.GREEN, Color.AMBER]
 WIPES = [Mode.WIPE_RIGHT, Mode.WIPE_DOWN, Mode.WIPE_LEFT, Mode.WIPE_UP]
 
 
-def can_show(model: SignModel, code: object) -> bool:
-    """Whether ``model`` has ``code``, by the same rules ``Sign(strict=True)`` checks."""
-    version, capability = requires(code)
-    if version > max(model.protocol_versions):
-        return False
-    return capability is None or model.capabilities is None or capability in model.capabilities
-
-
 class Paint:
     """Color Control Codes for a model. A red-only Sign takes none at all."""
 
     def __init__(self, model: SignModel) -> None:
-        self.colors = [color for color in Color if can_show(model, color)]
+        self.colors = [color for color in Color if model.can_show(color)]
         self.rainbow = [color for color in RAINBOW if color in self.colors]
         self._next = itertools.cycle(self.colors or [Color.RED])
 
@@ -90,7 +82,7 @@ def name(code: Mode | SpecialMode | SpecialGraphic | Font) -> str:
 def sweeps(model: SignModel, paint: Paint) -> Message:
     """Bars of light wiped across the panel in each direction, in each color."""
     bar = "#" * ((model.columns or 120) // 6)
-    font: list[Segment] = [Font.FULL_HEIGHT] if can_show(model, Font.FULL_HEIGHT) else []
+    font: list[Segment] = [Font.FULL_HEIGHT] if model.can_show(Font.FULL_HEIGHT) else []
     return Message(
         Frame(Mode.HOLD, Position.FILL, paint.rainbow_text("VEGAS MODE")),
         Frame(Mode.HOLD, Position.FILL, [*paint.next(), model.name]),
@@ -106,7 +98,7 @@ def mode_cascade(model: SignModel, paint: Paint) -> Message:
         *(
             Frame(mode, Position.FILL, [*paint.next(), name(mode)])
             for mode in Mode
-            if can_show(model, mode)
+            if model.can_show(mode)
         )
     )
 
@@ -116,7 +108,7 @@ def font_cascade(model: SignModel, paint: Paint) -> Message:
         *(
             Frame(Mode.ROLL_LEFT, Position.FILL, [font, *paint.next(), name(font)])
             for font in Font
-            if can_show(model, font)
+            if model.can_show(font)
         )
     )
 
@@ -125,9 +117,9 @@ def special_effects(model: SignModel, paint: Paint) -> Message:
     effects = [
         Frame(mode, Position.FILL, [*paint.next(), name(mode)])
         for mode in SpecialMode
-        if can_show(model, mode)
+        if model.can_show(mode)
     ]
-    graphics = [Frame(graphic) for graphic in SpecialGraphic if can_show(model, graphic)]
+    graphics = [Frame(graphic) for graphic in SpecialGraphic if model.can_show(graphic)]
     # Alternate effects and graphics. A graphic Frame can't hold text, so it stands alone.
     paired = itertools.chain.from_iterable(itertools.zip_longest(effects, graphics))
     return Message(*(frame for frame in paired if frame is not None))

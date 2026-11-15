@@ -216,3 +216,11 @@ def test_set_sign_address_is_two_hex_digits() -> None:
     assert SetSignAddress(0x2F).encode_data() == b"72F"
     with pytest.raises(ValueError, match="0-255"):
         SetSignAddress(256)
+
+
+def test_clear_memory_waits_until_the_sign_has_finished_clearing() -> None:
+    # hardware-results.md, "Memory Configuration limit": read sooner than about 1.5 s
+    # after Clear Memory, a 4120C reported memory still in use.
+    packet = encode_packet(ALL_SIGNS, [ClearMemory()], checksum=False)
+
+    assert packet.chunks[-1].pause_after == 1.5

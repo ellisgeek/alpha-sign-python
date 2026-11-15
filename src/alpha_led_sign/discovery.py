@@ -2,19 +2,15 @@
 
 import time
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from alpha_led_sign import models
 from alpha_led_sign.models import SignModel
 from alpha_led_sign.protocol.addresses import check_sign_address
 from alpha_led_sign.protocol.commands import NetworkQuery, SerialErrorStatus
-from alpha_led_sign.protocol.packet import (
-    ReceivedResponse,
-    Recipient,
-    ResponseReader,
-    encode_packet,
-)
-from alpha_led_sign.protocol.response import ResponseError
+from alpha_led_sign.protocol.packet import Recipient, encode_packet
+from alpha_led_sign.protocol.responses import ReceivedResponse, ResponseError, ResponseReader
 from alpha_led_sign.transport import Transport, send_packet
 
 FIRST_ANSWER_DELAY = 1.0
@@ -40,7 +36,11 @@ class DiscoveredSign:
 
 
 def discover(
-    transport: Transport, *, max_address: int = 255, checksum: bool = True
+    transport: Transport,
+    *,
+    max_address: int = 255,
+    checksum: bool = True,
+    clock: Callable[[], float] = time.monotonic,
 ) -> list[DiscoveredSign]:
     """Broadcast a Network Query and collect every answer, sorted by Sign Address.
 
@@ -48,22 +48,24 @@ def discover(
     searching all 255 addresses takes over two minutes. Lower ``max_address`` when the
     Signs' addresses are known to be small. Two Signs sharing an address garble each
     other's answers (p. 32); those answers are skipped with a warning.
+
+    ``clock`` gives the time in seconds that the wait for answers is measured on.
     """
     check_sign_address(max_address, name="max_address")
     broadcast = Recipient(models.GENERIC.sign_type, 0)
     send_packet(transport, encode_packet(broadcast, [NetworkQuery()], checksum=checksum))
     wait = FIRST_ANSWER_DELAY + max_address * PER_ADDRESS_DELAY + MARGIN
-    deadline = time.monotonic() + wait
+    deadline = clock() + wait
 
     found: dict[int, DiscoveredSign] = {}
     reader = ResponseReader()
-    while (remaining := deadline - time.monotonic()) > 0:
+    while (remaining := deadline - clock()) > 0:
         data = transport.read(remaining)
         if not data:
             break
         for response in reader.feed(data):
             _collect(response, found)
-    if reader.pending.strip(b"\x00"):
+    if reader.has_partial:
         _garbled(reader.pending)
     return sorted(found.values(), key=lambda sign: sign.address)
 

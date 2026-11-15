@@ -238,8 +238,9 @@ from a real Sign.
     support grows without new classes.
 69. As a maintainer, I want to add a Command by adding one small class, so that Alpha
     2.0 and 3.0 support doesn't change the Packet encoder.
-70. As a maintainer, I want a test that fails when a Mode, Special Mode, or font has
-    no entry in the requirements lookup, so that validation can't skip a new code.
+70. As a maintainer, I want a test that fails when a Mode, Special Mode, font, or
+    Control Code type has no entry in the requirements lookup or the Control Code
+    table, so that validation, decoding, and markup can't skip a new code.
 71. As a maintainer, I want a test that imports every public name, so that removing an
     export fails CI.
 72. As a hardware tester, I want to run the hardware tests against my Sign with
@@ -311,10 +312,14 @@ from a real Sign.
 - A Packet is a sequence of Chunks. Each Chunk has bytes and the silence (in seconds)
   the line must keep after it. A nested Packet needs 100 ms after each STX (pp. 11,
   13, 14). A fixed tone needs 3 s after the Packet (p. 27, note 4). A programmable
-  tone needs its full play time. A SMALL DOTS PICTURE write needs 100 ms after its
-  Width (p. 40), so a Command can also name pauses inside its data, and the Chunk is
-  split there. Converting a Packet to bytes joins the Chunks and
-  drops the pauses, for logging and comparison.
+  tone needs its full play time. Clear Memory needs 1.5 s, measured on a 4120C
+  (hardware-results.md). A SMALL DOTS PICTURE write needs 100 ms after its Width
+  (p. 40), so a Command's data can be pieces of bytes with a `Pause` where each
+  silence falls, and the Chunk is split there; the pause can't drift from the layout
+  that puts it there. Converting a Packet to bytes joins the Chunks and drops the
+  pauses, for logging and comparison.
+- In a nested Packet only the last Command's pause comes after the Packet. An earlier
+  Command's pause, such as a tone's, is dropped (see the open questions).
 - Sending a Packet means writing each Chunk and then asking the Transport to pause.
   A Transport's write returns only once the bytes have left, so a pause is real
   silence on the line. Pause is part of the Transport seam so that a bridge adapter
@@ -337,24 +342,39 @@ to one Sign Model.
 2. **Capabilities come from the manual.** The registry is built at import time from
    the extracted Tables 68-70, which ship inside the package as JSON and are mapped to
    library enums. A table cell with a footnote counts as supported. The "R" (red-only)
-   4000 Series models lose the color Capability (Table 69, note 1).
+   4000 Series models lose the color Capability (Table 69, note 1). A few Capabilities
+   are not columns of the tables but notes in Appendix G: the BetaBrite 1036 fonts and
+   animations, Shadow characters (BetaBrite 1036 and AlphaPremiere 9000), and the
+   Auxiliary Port attribute (Series 4000 and 7000, so every 4000 Series profile has
+   it).
 3. **Overrides wait for evidence.** A Capability override is a copy of a model with
    replaced Capabilities. A declared overrides field arrives with the first hardware
    result that shows a Capability differing from the manual. The 4120C's Capabilities
    all matched; its differences were memory figures, which are plain `SignModel`
    fields (`memory_bytes`, `memory_reserved`, `dots_picture_planes`).
-4. **Every code's needs are looked up in one place.** Each Command declares the
-   minimum Protocol Version it needs. For every Mode, color, font, and other Control
-   Code, one requirements function gives the minimum version and the Capability. A
-   test checks that each Mode, Special Mode, and font has an entry. Validation
-   compares both against the model.
+4. **Every Command states its Requirements.** `Command.requirements()` lists what
+   the Command needs from a Sign Model as data: a Protocol Version, a Capability, a
+   display size, room in memory, or a tall font in a Display Position. By default it
+   is the Command's `min_version` plus what `requires(code)` gives for each of its
+   `codes()`. `requires` knows each Mode and Display Position; for Control Codes it
+   reads the Control Code table (`protocol/control_codes.py`), which has one entry
+   per Control Code type: its values for decoding, the Capability each needs, and
+   whether a STRING File may hold it (Table 19). Tests fail when a Control Code type
+   has no entry, when a known value does not decode to itself, and when one has no
+   markup spelling, and each Mode, Special Mode, and font must have an entry.
+   Validation checks each Requirement against the model, and knows the closed set of
+   Requirement kinds, not the Command types. `SignModel.can_show(code)` answers the
+   same question for one code.
 5. **Commands are an open set.** Each Command is a small class with a Command Code and
    a method that returns its Data Field. Adding Alpha 2.0 and 3.0 Commands means adding
-   classes. The Packet encoder does not change.
+   classes. The Packet encoder and validation do not change; a test checks a Command
+   that `models` has never heard of.
 6. **Validation is advisory by default.** The manual's tables have gaps, so strict
    mode raises and advisory mode warns and sends anyway.
    Validation also reports a font taller than 7 rows in the Top, Bottom, or Fill
-   position on a two-line model, which the Sign draws 7 high (p. 96).
+   position on a two-line model, which the Sign draws 7 high (p. 96). That is a
+   difference in how content shows, not a missing Capability, yet strict mode raises
+   on it too; see the open questions.
 7. **A generic model exists.** Sign Type `Z`, Alpha 1.0, no Capability checks. It
    works with any Alpha Sign before it has a profile.
 
@@ -368,8 +388,9 @@ to one Sign Model.
 - **Recipient.** A Sign Type (one ASCII character) and a Sign Address: an integer
   0-255, or a two-character hex pattern where `?` matches any digit (p. 11).
 - **Command.** Each has a one-character Command Code, a method that returns its Data
-  Field, the minimum Protocol Version it needs, whether it must be last, the pause it
-  needs after it, and the codes it contains (for validation). Reads also parse a
+  Field (with any pauses inside it), the minimum Protocol Version it needs, whether it
+  must be last, the pause it needs after it, the codes it contains, and its
+  Requirements (for validation). Reads also parse a
   decoded Response into a typed value.
 - **Response decoding.** A decoder takes one Response Packet (Type Code `0`, address
   `00`, p. 19) and returns its Commands, checking every Checksum. A reader takes bytes
@@ -446,6 +467,12 @@ to one Sign Model.
   track the configuration, so this is not checked.
 
 ### Read behavior
+
+These rules live in `ResponseMatcher` (`protocol/matching.py`), which is pure: `Sign`
+and `discover` only move bytes between it and the Transport. Each Read states the
+Response it expects (`response_code` and `response_prefix`), so a Response is matched
+without parsing it. Response types, decoding, and the reader are in
+`protocol/responses.py`; `packet.py` only encodes.
 
 - Before it sends a read, `Sign` throws away every Response that has already arrived.
   If part of a Response had arrived, the rest of it is skipped when it comes.
@@ -540,17 +567,18 @@ change.
 
 | Seam | Modules tested | Catches | Misses |
 |---|---|---|---|
-| Protocol encode and decode (pure bytes) | Packet framing, Commands, codes, Messages, Response decoding and the reader, requirements | Framing, Checksum, nesting, pauses, Control Code bytes, field layouts, value rules | Whether a Sign accepts them |
-| `Sign` over `FakeTransport` | `Sign`, validation through `Sign`, discovery, read behavior | The right Packets and pauses, validation before sending, Response parsing, timeouts, late answers | Serial timing and hardware quirks |
+| Protocol encode and decode (pure bytes) | Packet framing, Commands, codes and the Control Code table, Messages, Response decoding and the reader, matching Responses to Reads, requirements | Framing, Checksum, nesting, pauses, Control Code bytes, field layouts, value rules | Whether a Sign accepts them |
+| `Sign` over `FakeLine` | `Sign`, validation through `Sign`, discovery, read behavior end to end | The right Packets and pauses, validation before sending, Response parsing, timeouts, late answers | Serial timing and hardware quirks |
 | Hardware (opt-in, `-m hardware`) | The whole library against a real Sign | Firmware behavior, baud and parity, gaps in the manual's tables | Not run in CI; needs a connected Sign |
 
 The Sign Model registry is tested directly as data against Table 3, Table 5, Tables
 68-70, and the brochure. `SerialTransport` is tested over pyserial's `loop://`.
 
-Test adapters sit at the Transport seam: `FakeTransport`, a recording Transport that
-keeps every byte for captures, and later the Sign emulator
+Test adapters sit at the Transport seam: `FakeLine`, an in-memory Line with a virtual
+clock that answers a Read only after it is written, a recording Transport that
+keeps every byte for captures, and the Sign emulator
 ([emulator-spec.md](emulator-spec.md)), which the hardware suite reaches over
-`socket://`. Witnessed tests are a subset
+`socket://`. `discover` takes a clock, so its deadline runs on `FakeLine`'s. Witnessed tests are a subset
 of the hardware seam: the test asks the person watching a question, such as how many
 plays they heard, and checks their answer.
 
@@ -566,10 +594,12 @@ firmware, and date, to JSON), and `ALPHA_SIGN_WITNESS=1` with pytest's `-s`
 
 - Packet tests compare encoder output with Tables 38-44 byte for byte.
 - Text File tests compare Frames and Control Codes with Tables 47-51 and Appendix G.
-- `Sign` tests record writes and pauses on `FakeTransport` and replay canned
-  Responses to it, including late, partial, and garbled ones.
-- The requirements test checks that every Mode, Special Mode, and font has an entry.
-- One test runs the README's example end to end over `FakeTransport`.
+- `Sign` tests record writes and pauses on `FakeLine`, which answers each Read with
+  canned Responses once it is written, including late, partial, and garbled ones.
+- `ResponseMatcher` tests check the read behavior as pure data, with no Transport.
+- The requirements test checks that every Mode, Special Mode, and font has an entry, and
+  the Control Code table test that every Control Code type has one.
+- One test runs the README's example end to end over `FakeLine`.
 
 ### Hardware checklist
 
@@ -598,6 +628,7 @@ manual brings in a model field or, for a Capability, the overrides field
 | Where a called DOTS PICTURE is drawn among text: the manual doesn't say. | At the text cursor, in an 8-row line centered on the display, cut to its top 8 rows whatever the font; five and seven high text ends one row above the line's bottom (a 4120C). | Witnessed, per font: text, a 15-dot bar, text; count the bar's dots and the unlit rows above it and above the text. |
 | A called DOTS PICTURE in Middle: p. 95 cuts only past 16 rows, p. 96 past 15. | All of a 15-row picture shows, at the top of its line. A 4120C agrees. | Witnessed: full height text, a 15-dot bar, text, in Middle; count the bar's dots. |
 | Fonts taller than 7 rows in Top, Bottom, or Fill on a two-line Sign: "size down" to 7-high (p. 96). | As the manual says; validation reports them and suggests Middle. A 4120C agrees. | Witnessed: full height in Fill, then in Middle. |
+| Pauses in a nested Packet: whether the Sign runs each nested Command as it arrives or only after EOT. | After EOT: only the last Command's `pause_after` is kept, so `[ClearMemory(), WriteText(...)]` or a tone followed by more Commands loses the earlier pause. | Not yet written: nest Clear Memory before a Memory Configuration and read General Information back; nest a tone before a write and listen. |
 | Memory Configuration limit: whether the Sign takes exactly what note 1 allows. | The model's `memory_needed`, which on the 4120C adds 9 reserved bytes. | Automatic, needs erase permission: the largest File A beside File B is taken, one byte more is not. |
 
 ## Out of Scope
@@ -621,8 +652,10 @@ manual brings in a model field or, for a Capability, the overrides field
 
 Everything left needs a real Sign. Delete each item when it is done.
 
-Nothing on the hardware checklist is open. New hardware findings go in
-[hardware-results.md](hardware-results.md).
+- Pauses in a nested Packet (hardware checklist): write the test and run it on a
+  4120C, then keep or fix how `encode_packet` drops an earlier Command's pause.
+
+New hardware findings go in [hardware-results.md](hardware-results.md).
 
 ## Further Notes
 
@@ -630,6 +663,15 @@ Nothing on the hardware checklist is open. New hardware findings go in
 
 - **NEWS FLASH and TRUMPET on a BetaBrite 1036**: whether it wants the letters or
   hex 3AH/3BH. No test of one is planned; the library sends the letters.
+- **Pauses in a nested Packet**: `encode_packet` keeps only the last Command's
+  `pause_after`. If the Sign runs nested Commands as they arrive, an earlier tone or
+  Clear Memory needs its pause after its own Command. Unchanged until the hardware
+  checklist item is run.
+- **Strict mode and content that shows differently**: a font taller than 7 rows
+  outside the Middle position on a two-line Sign is accepted and drawn 7 high, but it
+  is reported with the unsupported Capabilities, so `strict=True` raises on it. A
+  second, warn-only kind of problem would separate "shown differently" from "not
+  supported". Not done until a user needs it.
 
 ### Future projects
 

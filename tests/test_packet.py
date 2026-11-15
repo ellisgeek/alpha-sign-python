@@ -5,7 +5,7 @@ from typing import ClassVar
 
 import pytest
 
-from alpha_led_sign.protocol.commands import Command
+from alpha_led_sign.protocol.commands import Command, Pause
 from alpha_led_sign.protocol.packet import Chunk, Recipient, encode_packet
 
 SYNC = b"\x00" * 5
@@ -25,6 +25,16 @@ class Raw(Command):
 @dataclass(frozen=True)
 class RawSpecial(Raw):
     code: ClassVar[str] = "E"
+
+
+@dataclass(frozen=True)
+class Paused(Command):
+    """A Command whose data has silences in it, written where they fall."""
+
+    code: ClassVar[str] = "A"
+
+    def encode_data(self) -> tuple[bytes | Pause, ...]:
+        return (b"AHE", Pause(0.1), b"LL", Pause(0.25), b"O")
 
 
 SET_TIME_FORMAT_AM_PM = RawSpecial(b"'S")
@@ -136,3 +146,15 @@ def test_broadcast_and_wildcard_recipients_reach_several_signs(
 ) -> None:
     # p. 11: address 00 reaches every Sign of the Sign Type, and "?" matches any digit.
     assert Recipient("Z", address).reaches_several is several
+
+
+def test_a_pause_inside_a_commands_data_splits_the_packet_where_it_falls() -> None:
+    packet = encode_packet(Recipient("Z", 0), [Paused()], checksum=True)
+
+    # The bytes and Checksum are Table 41's: the pauses change only when they are sent.
+    assert bytes(packet) == SYNC + b"\x01Z00\x02AAHELLO\x0301FB\x04"
+    assert packet.chunks == (
+        Chunk(SYNC + b"\x01Z00\x02AAHE", pause_after=0.1),
+        Chunk(b"LL", pause_after=0.25),
+        Chunk(b"O\x0301FB\x04"),
+    )

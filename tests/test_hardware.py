@@ -34,7 +34,6 @@ results in docs/hardware-results.md.
 
 import json
 import os
-import time
 import warnings
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -73,6 +72,7 @@ from alpha_led_sign import (
 from alpha_led_sign.models import UnsupportedCapabilityWarning
 from alpha_led_sign.protocol.commands import (
     Command,
+    Pause,
     Tone,
     WriteDotsPicture,
 )
@@ -124,9 +124,6 @@ class Settings:
 EMULATED = emulator.selected
 SETTINGS = Settings.from_env()
 CAPTURE_PATH = os.environ.get("ALPHA_SIGN_CAPTURE")
-
-CLEAR_MEMORY_SECONDS = 1.5
-"""A wait after Clear Memory. Read sooner, a 4120C reported memory still in use."""
 
 needs_erase = pytest.mark.skipif(
     not EMULATED and not _flag("ALPHA_SIGN_ALLOW_ERASE"), reason="set ALPHA_SIGN_ALLOW_ERASE=1"
@@ -378,13 +375,10 @@ def test_the_largest_memory_configuration_the_sign_takes_is_the_models(sign: Sig
     largest = sign.model.memory_bytes - sign.model.memory_needed([TextFile("A", size=0), other])
 
     sign.clear_memory()
-    time.sleep(CLEAR_MEMORY_SECONDS)
     alone = _used(sign, [TextFile("A", size=256)])
     sign.clear_memory()
-    time.sleep(CLEAR_MEMORY_SECONDS)
     at_limit = _used(sign, [TextFile("A", size=largest), other])
     sign.clear_memory()
-    time.sleep(CLEAR_MEMORY_SECONDS)
     sign.strict = False  # the model refuses this one; send it anyway
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -460,8 +454,8 @@ def test_a_dots_picture_of_another_size_than_its_file(
 class UnpausedWriteDotsPicture(WriteDotsPicture):
     """A DOTS PICTURE write without the pause p. 40 asks for after the Width."""
 
-    def pauses_in_data(self) -> tuple[tuple[int, float], ...]:
-        return ()
+    def encode_data(self) -> tuple[bytes | Pause, ...]:
+        return tuple(piece for piece in super().encode_data() if not isinstance(piece, Pause))
 
 
 @needs_erase

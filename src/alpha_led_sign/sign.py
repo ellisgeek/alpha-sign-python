@@ -43,11 +43,11 @@ from alpha_led_sign.protocol.commands import (
     WriteString,
     WriteText,
 )
+from alpha_led_sign.protocol.matching import Answer, ResponseMatcher, Skipped
 from alpha_led_sign.protocol.memory import MemoryFile, RunTime
 from alpha_led_sign.protocol.message import Frame, Message, Segment
-from alpha_led_sign.protocol.packet import Recipient, ResponseReader, encode_packet
+from alpha_led_sign.protocol.packet import Recipient, encode_packet
 from alpha_led_sign.protocol.pictures import DotsPicture
-from alpha_led_sign.protocol.response import ResponseError, UnexpectedResponseError
 from alpha_led_sign.transport import SerialFormat, SerialTransport, Transport, send_packet
 
 DEFAULT_READ_TIMEOUT = 2.0
@@ -85,8 +85,7 @@ class Sign:
         self.broadcast_reads = broadcast_reads
         """Send reads to Sign Address 0 or a ``?`` pattern. Every matching Sign answers,
         so set it only when exactly one Sign is on the line."""
-        self._reader = ResponseReader()
-        self._unanswered = 0  # Reads sent whose Response has not arrived yet
+        self._responses = ResponseMatcher()
 
     @classmethod
     def serial(
@@ -312,37 +311,27 @@ class Sign:
                 "their answers would collide; address one Sign (discover() finds them), or "
                 "pass broadcast_reads=True when only one Sign is on the line"
             )
-        self._discard_received()
-        began_earlier = bool(self._reader.pending.strip(b"\x00"))
+        while data := self.transport.read(0):
+            self._responses.discard(data)
         self.send(read)
         while True:
             data = self.transport.read(self.read_timeout)
             if not data:
-                raise SignTimeoutError(f"no complete Response after {self._reader.pending!r}")
-            for response in self._reader.feed(data):
-                self._unanswered = max(self._unanswered - 1, 0)
-                if began_earlier:
-                    began_earlier = False
-                    continue
-                if isinstance(response, ResponseError):
-                    raise response
-                try:
-                    return read.parse(response)
-                except UnexpectedResponseError:
-                    if not self._unanswered:
-                        raise
+                raise SignTimeoutError(f"no complete Response after {self._responses.pending!r}")
+            for outcome in self._responses.feed(read, data):
+                match outcome:
+                    case Answer(value):
+                        return value
+                    case Skipped():
+                        continue
+                    case error:
+                        raise error
 
     def send(self, *commands: Command) -> None:
         """Validate ``commands`` against the model and send them in one Packet."""
         validate(self.model, commands, strict=self.strict)
         send_packet(self.transport, encode_packet(self.recipient, commands, checksum=self.checksum))
-        self._unanswered += sum(isinstance(command, Read) for command in commands)
-
-    def _discard_received(self) -> None:
-        """Drop every Response that is already in, keeping a partial one to skip later."""
-        while data := self.transport.read(0):
-            for _ in self._reader.feed(data):
-                self._unanswered = max(self._unanswered - 1, 0)
+        self._responses.sent(commands)
 
 
 def _as_message(content: Message | Frame | str) -> Message:

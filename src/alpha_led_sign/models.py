@@ -9,17 +9,21 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from importlib import resources
+from typing import assert_never
 
-from alpha_led_sign.protocol.codes import Font, Position
-from alpha_led_sign.protocol.commands import (
-    Command,
-    SetMemoryConfiguration,
-    WriteDotsPicture,
-    WriteText,
-)
+from alpha_led_sign.protocol.capabilities import Capability
+from alpha_led_sign.protocol.codes import Position
+from alpha_led_sign.protocol.commands import Command
 from alpha_led_sign.protocol.memory import DotsPictureFile, MemoryFile
-from alpha_led_sign.protocol.pictures import PixelColor
-from alpha_led_sign.protocol.requirements import Capability, requires
+from alpha_led_sign.protocol.requirements import (
+    CapabilityRequirement,
+    DisplaySizeRequirement,
+    FontPositionRequirement,
+    MemoryRequirement,
+    Requirement,
+    VersionRequirement,
+    requires,
+)
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
 # Matrix column -> Capability. Columns that split one Capability by direction
@@ -137,6 +141,11 @@ class SignModel:
     bytes besides its overhead, whatever its color depth: a 4120C measured 2 planes
     (docs/hardware-results.md)."""
 
+    def can_show(self, code: object) -> bool:
+        """Whether this model meets every Requirement of ``code`` (a Mode, Display
+        Position, or Control Code), by the rules ``validate`` uses."""
+        return all(_problem(self, requirement) is None for requirement in requires(code))
+
     def memory_needed(self, files: Sequence[MemoryFile]) -> int:
         """Bytes of the Memory Pool a Memory Configuration of ``files`` needs."""
         needed = self.memory_reserved
@@ -162,7 +171,8 @@ def _series_4000(
     memory_reserved: int = 0,
     dots_picture_planes: int | None = None,
 ) -> SignModel:
-    capabilities = MATRIX_ROWS["4000 Series"]
+    # Appendix G, p. 82: the Auxiliary Port attribute is for Series 4000 and 7000 Signs.
+    capabilities = MATRIX_ROWS["4000 Series"] | {Capability.AUXILIARY_PORT}
     if name.endswith("R"):
         capabilities -= _COLORS  # Table 69, note 1: red only.
     return SignModel(
@@ -278,103 +288,66 @@ def validate(model: SignModel, commands: Sequence[Command], *, strict: bool = Fa
 
 
 def _problems(model: SignModel, command: Command) -> list[str]:
-    newest = max(model.protocol_versions)
-    problems: list[str] = []
-    if command.min_version > newest:
-        problems.append(_version_problem(model, command.min_version, command))
-    if isinstance(command, SetMemoryConfiguration):
-        problems.extend(_memory_problems(model, command))
-    if isinstance(command, WriteDotsPicture):
-        problems.extend(_picture_problems(model, command))
-    if isinstance(command, WriteText):
-        problems.extend(_position_problems(model, command))
-    for code in command.codes():
-        version, capability = requires(code)
-        if version > newest:
-            problems.append(_version_problem(model, version, code))
-        if model.capabilities is None or capability is None:
-            continue
-        if capability not in model.capabilities:
-            problems.append(f"{model.name} does not support {capability.value} ({_describe(code)})")
-    return problems
-
-
-def _memory_problems(model: SignModel, command: SetMemoryConfiguration) -> list[str]:
-    """p. 27, note 1: the Files' sizes plus the overhead of each File must fit.
-
-    The model says how DOTS PICTURE Files count and what the Sign keeps for itself.
-    """
-    if model.memory_bytes is None:
-        return []
-    needed = model.memory_needed(command.files)
-    if needed <= model.memory_bytes:
-        return []
     return [
-        f"{model.name} has {model.memory_bytes:,} bytes of memory, and this Memory "
-        f"Configuration needs {needed:,} ({model.file_overhead} bytes of overhead per File)"
+        problem
+        for requirement in command.requirements()
+        if (problem := _problem(model, requirement)) is not None
     ]
 
 
-# Fonts taller than 7 rows (Appendix G, p. 82; Appendix O): ten high and the 15/16-row
-# sets.
-_TALL_FONTS = frozenset({Font.TEN_HIGH, Font.FULL_HEIGHT, Font.FULL_HEIGHT_FANCY})
 _SEVEN_HIGH_POSITIONS = frozenset({Position.TOP, Position.BOTTOM, Position.FILL})
 
 
-def _position_problems(model: SignModel, command: WriteText) -> list[str]:
-    """p. 96, 7.10.3.2.5: in the Top, Bottom, or Fill position a two-line Sign "will
-    'size down'" a font larger than 7-high. Only Middle shows it at full size."""
-    if model.lines != 2:
-        return []
-    problems: list[str] = []
-    for frame in command.message.frames:
-        if frame.mode is None or frame.position not in _SEVEN_HIGH_POSITIONS:
-            continue
-        for font in sorted(_TALL_FONTS.intersection(frame.content), key=lambda f: f.value):
-            problems.append(
-                f"{model.name} shows {_describe(font)} as 7-high in the "
-                f"{frame.position.name} position (p. 96); use Position.MIDDLE"
+def _problem(model: SignModel, requirement: Requirement) -> str | None:
+    """Why ``model`` can't meet ``requirement``, or None if it can or the facts are unknown."""
+    match requirement:
+        case VersionRequirement(version, source):
+            if version <= max(model.protocol_versions):
+                return None
+            return f"{model.name} does not accept {version.label}, which {_describe(source)} needs"
+        case CapabilityRequirement(capability, source):
+            if model.capabilities is None or capability in model.capabilities:
+                return None
+            return f"{model.name} does not support {capability.value} ({_describe(source)})"
+        case DisplaySizeRequirement(columns, rows, source):
+            if model.columns is None or model.rows is None:
+                return None
+            if columns <= model.columns and rows <= model.rows:
+                return None
+            return (
+                f"{model.name}'s display is {model.columns} x {model.rows} pixels, and "
+                f"{_describe(source)} is {columns} x {rows}"
             )
-    return problems
-
-
-def _picture_problems(model: SignModel, command: WriteDotsPicture) -> list[str]:
-    """Table 70: pictures need the Graphic Capability, and note 1 says they must fit the
-    display. Table 69, note 1: an R model shows red only."""
-    picture = command.picture
-    problems: list[str] = []
-    columns, rows = model.columns, model.rows
-    if (
-        columns is not None
-        and rows is not None
-        and (picture.width > columns or picture.height > rows)
-    ):
-        problems.append(
-            f"{model.name}'s display is {columns} x {rows} pixels, and DOTS "
-            f"PICTURE {command.label} is {picture.width} x {picture.height}"
-        )
-    if model.capabilities is None:
-        return problems
-    if Capability.GRAPHIC not in model.capabilities:
-        problems.append(f"{model.name} does not support {Capability.GRAPHIC.value} (DOTS PICTURE)")
-    if Capability.COLOR not in model.capabilities:
-        colors = {pixel for row in picture.rows for pixel in row} - _RED_ONLY_PIXELS
-        if colors:
-            names = ", ".join(sorted(color.name for color in colors))
-            problems.append(f"{model.name} does not support {Capability.COLOR.value} ({names})")
-    return problems
-
-
-_RED_ONLY_PIXELS = frozenset({PixelColor.OFF, PixelColor.RED})
-
-
-def _version_problem(model: SignModel, needed: ProtocolVersion, item: object) -> str:
-    return f"{model.name} does not accept {needed.label}, which {_describe(item)} needs"
+        case MemoryRequirement(files):
+            # p. 27, note 1: the Files' sizes plus the overhead of each File must fit. The
+            # model says how DOTS PICTURE Files count and what the Sign keeps for itself.
+            if model.memory_bytes is None:
+                return None
+            needed = model.memory_needed(files)
+            if needed <= model.memory_bytes:
+                return None
+            return (
+                f"{model.name} has {model.memory_bytes:,} bytes of memory, and this Memory "
+                f"Configuration needs {needed:,} ({model.file_overhead} bytes of overhead "
+                "per File)"
+            )
+        case FontPositionRequirement(font, position):
+            # p. 96, 7.10.3.2.5: in the Top, Bottom, or Fill position a two-line Sign "will
+            # 'size down'" a font larger than 7-high. Only Middle shows it at full size.
+            if model.lines != 2 or position not in _SEVEN_HIGH_POSITIONS:
+                return None
+            return (
+                f"{model.name} shows {_describe(font)} as 7-high in the "
+                f"{position.name} position (p. 96); use Position.MIDDLE"
+            )
+        case _:
+            assert_never(requirement)
 
 
 def _describe(item: object) -> str:
     if isinstance(item, Enum):
         return f"{type(item).__name__}.{item.name}"
     if isinstance(item, Command):
-        return type(item).__name__
+        label = getattr(item, "label", None)
+        return type(item).__name__ + (f" {label!r}" if isinstance(label, str) else "")
     return repr(item)

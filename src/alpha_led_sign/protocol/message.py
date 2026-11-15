@@ -11,8 +11,8 @@ from alpha_led_sign.protocol.codes import (
     RawControl,
     SpecialGraphic,
     SpecialMode,
-    decode_control,
 )
+from alpha_led_sign.protocol.control_codes import decode_control
 
 ESC = b"\x1b"
 

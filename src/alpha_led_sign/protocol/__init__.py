@@ -5,6 +5,7 @@ Everything public is importable from here, such as
 """
 
 from alpha_led_sign.protocol.addresses import check_sign_address
+from alpha_led_sign.protocol.capabilities import Capability
 from alpha_led_sign.protocol.codes import (
     Attribute,
     CharacterAttribute,
@@ -38,6 +39,7 @@ from alpha_led_sign.protocol.commands import (
     GeneralInformation,
     NetworkQuery,
     NetworkQueryResponse,
+    Pause,
     ProgrammableTone,
     Read,
     ReadDayOfWeek,
@@ -70,6 +72,7 @@ from alpha_led_sign.protocol.commands import (
     WriteString,
     WriteText,
 )
+from alpha_led_sign.protocol.framing import compute_checksum
 from alpha_led_sign.protocol.labels import check_file_label
 from alpha_led_sign.protocol.memory import (
     DotsPictureFile,
@@ -81,19 +84,25 @@ from alpha_led_sign.protocol.memory import (
     lock_byte,
 )
 from alpha_led_sign.protocol.message import Frame, Message, Segment
-from alpha_led_sign.protocol.packet import (
-    Chunk,
-    Packet,
-    ReceivedResponse,
-    Recipient,
-    ResponseReader,
-    compute_checksum,
-    decode_response,
-    encode_packet,
-)
+from alpha_led_sign.protocol.packet import Chunk, Packet, Recipient, encode_packet
 from alpha_led_sign.protocol.pictures import DotsPicture, PixelColor
-from alpha_led_sign.protocol.requirements import Capability, Requirement, requires
-from alpha_led_sign.protocol.response import ResponseError, ResponseItem, UnexpectedResponseError
+from alpha_led_sign.protocol.requirements import (
+    CapabilityRequirement,
+    DisplaySizeRequirement,
+    FontPositionRequirement,
+    MemoryRequirement,
+    Requirement,
+    VersionRequirement,
+    requires,
+)
+from alpha_led_sign.protocol.responses import (
+    ReceivedResponse,
+    ResponseError,
+    ResponseItem,
+    ResponseReader,
+    UnexpectedResponseError,
+    decode_response,
+)
 from alpha_led_sign.protocol.versions import ProtocolVersion
 
 __all__ = [
@@ -101,6 +110,7 @@ __all__ = [
     "Attribute",
     "Beep",
     "Capability",
+    "CapabilityRequirement",
     "CharacterAttribute",
     "CharacterFlash",
     "Chunk",
@@ -113,19 +123,23 @@ __all__ = [
     "CurrentDate",
     "CurrentTime",
     "DateFormat",
+    "DisplaySizeRequirement",
     "DotsPicture",
     "DotsPictureFile",
     "DotsPictureRef",
     "DoubleHigh",
     "Font",
+    "FontPositionRequirement",
     "Frame",
     "GeneralInformation",
     "MemoryFile",
+    "MemoryRequirement",
     "Message",
     "Mode",
     "NetworkQuery",
     "NetworkQueryResponse",
     "Packet",
+    "Pause",
     "PictureColors",
     "PixelColor",
     "Position",
@@ -175,6 +189,7 @@ __all__ = [
     "Tone",
     "TrueDescenders",
     "UnexpectedResponseError",
+    "VersionRequirement",
     "Weekday",
     "Wide",
     "WriteDotsPicture",

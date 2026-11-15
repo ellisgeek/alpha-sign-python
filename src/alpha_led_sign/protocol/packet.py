@@ -5,17 +5,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from alpha_led_sign.protocol.addresses import check_sign_address
-from alpha_led_sign.protocol.commands import Command
-from alpha_led_sign.protocol.response import ResponseError, ResponseItem
-
-NUL = b"\x00"
-SOH = b"\x01"
-STX = b"\x02"
-ETX = b"\x03"
-EOT = b"\x04"
-FRAMING_BYTES = frozenset(SOH + STX + ETX + EOT)
-SYNC = NUL * 5
-
+from alpha_led_sign.protocol.commands import Command, Pause
+from alpha_led_sign.protocol.framing import (
+    EOT,
+    ETX,
+    FRAMING_BYTES,
+    SOH,
+    STX,
+    SYNC,
+    compute_checksum,
+)
 
 _ADDRESS_PATTERN = re.compile(r"[0-9A-F?]{2}")
 
@@ -80,6 +79,21 @@ class Packet:
         return b"".join(chunk.data for chunk in self.chunks)
 
 
+def _split_pauses(
+    encoded: bytes | Sequence[bytes | Pause],
+) -> tuple[bytes, list[tuple[int, float]]]:
+    """A Command's Data Field, and each pause in it as (offset into the data, seconds)."""
+    if isinstance(encoded, bytes):
+        return encoded, []
+    data, pauses = b"", []
+    for piece in encoded:
+        if isinstance(piece, Pause):
+            pauses.append((len(data), piece.seconds))
+        else:
+            data += piece
+    return data, pauses
+
+
 def encode_packet(
     recipients: Recipient | Sequence[Recipient],
     commands: Sequence[Command],
@@ -106,7 +120,7 @@ def encode_packet(
         if nested:
             chunks.append(Chunk(pending, pause_after=NESTED_STX_PAUSE))
             pending = b""
-        data = command.encode_data()
+        data, pauses = _split_pauses(command.encode_data())
         if not FRAMING_BYTES.isdisjoint(data):
             raise ValueError(f"{type(command).__name__} data contains a framing byte: {data!r}")
         body = command.code.encode("ascii") + data
@@ -115,92 +129,10 @@ def encode_packet(
         if checksum:
             body += f"{compute_checksum(STX + body):04X}".encode("ascii")
         start = 0
-        for offset, pause in command.pauses_in_data():
+        for offset, pause in pauses:
             split = len(command.code) + offset
             chunks.append(Chunk(pending + body[start:split], pause_after=pause))
             pending, start = b"", split
         pending += body[start:]
     chunks.append(Chunk(pending + EOT, pause_after=commands[-1].pause_after))
     return Packet(tuple(chunks))
-
-
-def compute_checksum(data: bytes) -> int:
-    """The 16-bit sum of ``data``, which runs from an STX through its ETX inclusive (p. 12)."""
-    return sum(data) & 0xFFFF
-
-
-__all__ = [
-    "Chunk",
-    "Packet",
-    "ReceivedResponse",
-    "Recipient",
-    "ResponseError",
-    "ResponseItem",
-    "ResponseReader",
-    "check_sign_address",
-    "compute_checksum",
-    "decode_response",
-    "encode_packet",
-]
-
-RESPONSE_HEADER = b"000"
-"""Response Type Code "0" and Sign Address "00", sent whatever the Sign's address (p. 19)."""
-
-
-def decode_response(data: bytes) -> tuple[ResponseItem, ...]:
-    """Decode a Response Packet (pp. 19, 36, 38) into its Commands, checking each checksum."""
-    start = data.find(SOH)
-    if start < 0 or data[:start].strip(NUL):
-        raise ResponseError(f"no Response Packet header in {data!r}")
-    position = start + len(SOH)
-    if data[position : position + len(RESPONSE_HEADER)] != RESPONSE_HEADER:
-        raise ResponseError(f"not a Response Packet (Type Code 0, Sign Address 00): {data!r}")
-    position += len(RESPONSE_HEADER)
-
-    items: list[ResponseItem] = []
-    while data[position : position + 1] == STX:
-        end = data.find(ETX, position)
-        if end < 0 or end == position + 1:
-            raise ResponseError(f"Response Command without a Command Code or ETX: {data!r}")
-        framed = data[position : end + 1]
-        sent = data[end + 1 : end + 5]
-        if f"{compute_checksum(framed):04X}".encode("ascii") != sent:
-            raise ResponseError(f"Response checksum {sent!r} does not match its data: {data!r}")
-        items.append(ResponseItem(chr(framed[1]), framed[2:-1]))
-        position = end + 5
-    if not items or data[position:] != EOT:
-        raise ResponseError(f"Response Packet must be Commands followed by EOT: {data!r}")
-    return tuple(items)
-
-
-type ReceivedResponse = tuple[ResponseItem, ...] | ResponseError
-"""A Response Packet as received: its Commands, or the ResponseError it failed to decode with."""
-
-
-class ResponseReader:
-    """Splits the bytes a Sign sends back into Response Packets, however they arrive."""
-
-    def __init__(self) -> None:
-        self._buffer = b""
-
-    @property
-    def pending(self) -> bytes:
-        """Bytes received since the last complete Response."""
-        return self._buffer
-
-    def feed(self, data: bytes) -> list[ReceivedResponse]:
-        """Add received bytes; return the Responses they complete.
-
-        A Packet that fails to decode comes back as its ResponseError, in order, so the
-        caller decides whether to raise or skip it.
-        """
-        self._buffer += data
-        responses: list[ReceivedResponse] = []
-        while EOT in self._buffer:
-            end = self._buffer.index(EOT) + 1
-            packet, self._buffer = self._buffer[:end], self._buffer[end:]
-            try:
-                responses.append(decode_response(packet))
-            except ResponseError as error:
-                responses.append(error)
-        return responses

@@ -1,14 +1,15 @@
 """Commands: one instruction inside a Packet, a Command Code plus its data."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, time
 from enum import Enum
 from typing import ClassVar
 
 from alpha_led_sign.protocol.addresses import check_sign_address
-from alpha_led_sign.protocol.codes import Color, Control, CurrentTime, Font, Spacing, Speed, Wide
+from alpha_led_sign.protocol.capabilities import Capability
+from alpha_led_sign.protocol.control_codes import allowed_in_string_file
 from alpha_led_sign.protocol.labels import check_file_label
 from alpha_led_sign.protocol.memory import MemoryFile, RunTime, TextFile, lock_byte
 from alpha_led_sign.protocol.message import (
@@ -19,9 +20,26 @@ from alpha_led_sign.protocol.message import (
     encode_content,
     normalize_content,
 )
-from alpha_led_sign.protocol.pictures import DotsPicture, decode_dots_picture
-from alpha_led_sign.protocol.response import ResponseError, ResponseItem, UnexpectedResponseError
+from alpha_led_sign.protocol.pictures import DotsPicture, PixelColor, decode_dots_picture
+from alpha_led_sign.protocol.requirements import (
+    TALL_FONTS,
+    CapabilityRequirement,
+    DisplaySizeRequirement,
+    FontPositionRequirement,
+    MemoryRequirement,
+    Requirement,
+    VersionRequirement,
+    requires,
+)
+from alpha_led_sign.protocol.responses import ResponseError, ResponseItem, UnexpectedResponseError
 from alpha_led_sign.protocol.versions import ProtocolVersion
+
+
+@dataclass(frozen=True)
+class Pause:
+    """Seconds of silence the Sign needs at this point in a Command's data."""
+
+    seconds: float
 
 
 class Command(ABC):
@@ -35,10 +53,6 @@ class Command(ABC):
         """Seconds of silence the Sign needs after this Command before it can take more data."""
         return 0.0
 
-    def pauses_in_data(self) -> tuple[tuple[int, float], ...]:
-        """Silences the Sign needs inside the Data Field: (offset into the data, seconds)."""
-        return ()
-
     must_be_last: ClassVar[bool] = False
     """True if this Command may only be the last one in a nested Packet (p. 11)."""
 
@@ -46,12 +60,28 @@ class Command(ABC):
     """The earliest Protocol Version that has this Command."""
 
     @abstractmethod
-    def encode_data(self) -> bytes:
-        """Return the Data Field that follows the Command Code."""
+    def encode_data(self) -> bytes | Sequence[bytes | Pause]:
+        """Return the Data Field that follows the Command Code.
+
+        A Command that needs the line quiet partway through its data returns the data
+        in pieces with a Pause where each silence falls, so the pause sits where the
+        layout puts it.
+        """
 
     def codes(self) -> Iterable[object]:
         """The Modes, Display Positions, and Control Codes in this Command's data."""
         return ()
+
+    def requirements(self) -> Iterator[Requirement]:
+        """Everything this Command needs from a Sign Model to be shown as written.
+
+        By default: ``min_version`` and what each of ``codes()`` requires. A Command
+        that needs more, such as room in memory, adds to these.
+        """
+        if self.min_version > ProtocolVersion.EZ_KEY_II:
+            yield VersionRequirement(self.min_version, self)
+        for code in self.codes():
+            yield from requires(code)
 
 
 PRIORITY_LABEL = "0"
@@ -82,6 +112,14 @@ class WriteText(Command):
 
     def codes(self) -> Iterable[object]:
         return self.message.codes()
+
+    def requirements(self) -> Iterator[Requirement]:
+        yield from super().requirements()
+        for frame in self.message.frames:
+            if frame.mode is None:
+                continue  # no Mode Field, so no Display Position is sent
+            for font in sorted(TALL_FONTS.intersection(frame.content), key=lambda f: f.value):
+                yield FontPositionRequirement(font, frame.position)
 
 
 class SpecialFunction(Command):
@@ -148,12 +186,25 @@ class SetMemoryConfiguration(SpecialFunction):
     def encode_payload(self) -> bytes:
         return b"".join(file.encode() for file in self.files)
 
+    def requirements(self) -> Iterator[Requirement]:
+        yield from super().requirements()
+        yield MemoryRequirement(self.files)
+
+
+CLEAR_MEMORY_PAUSE = 1.5
+"""Seconds a Sign needs after Clear Memory. Read sooner, a 4120C reported memory still
+in use (docs/hardware-results.md, "Memory Configuration limit")."""
+
 
 @dataclass(frozen=True)
 class ClearMemory(SpecialFunction):
     """Erase every File and the Memory Configuration ("$" with no data, p. 21)."""
 
     label: ClassVar[str] = "$"
+
+    @property
+    def pause_after(self) -> float:
+        return CLEAR_MEMORY_PAUSE
 
 
 @dataclass(frozen=True, init=False)
@@ -425,17 +476,6 @@ STRING_MAX_BYTES = 125
 """STRING File data is buffered, so it is limited to 125 bytes (p. 37)."""
 
 
-def _allowed_in_string(segment: Segment) -> bool:
-    """Table 19, p. 37: the Control Codes a STRING File may contain."""
-    match segment:
-        case str() | Speed() | Wide() | CurrentTime() | Font() | Spacing() | Control.NEW_LINE:
-            return True
-        case Color():
-            return segment not in (Color.RAINBOW_1, Color.RAINBOW_2)
-        case _:
-            return False
-
-
 @dataclass(frozen=True, init=False)
 class WriteString(Command):
     """Write a STRING File (p. 37). Unlike a TEXT File write, the display does not blank."""
@@ -448,7 +488,7 @@ class WriteString(Command):
         check_file_label(label)
         segments = normalize_content(content)
         for segment in segments:
-            if not _allowed_in_string(segment):
+            if not allowed_in_string_file(segment):
                 raise ValueError(f"{segment!r} cannot be used in a STRING File (Table 19, p. 37)")
         object.__setattr__(self, "label", label)
         object.__setattr__(self, "content", segments)
@@ -467,6 +507,9 @@ DOTS_PICTURE_ROWS_PAUSE = 0.1
 """Seconds of silence a SMALL DOTS PICTURE write needs after its Width (p. 40)."""
 
 
+_RED_ONLY_PIXELS = frozenset({PixelColor.OFF, PixelColor.RED})
+
+
 @dataclass(frozen=True)
 class WriteDotsPicture(Command):
     """Write a SMALL DOTS PICTURE File (Table 22, p. 39). The display blanks until it ends.
@@ -482,35 +525,69 @@ class WriteDotsPicture(Command):
     def __post_init__(self) -> None:
         check_file_label(self.label)
 
-    def encode_data(self) -> bytes:
+    def encode_data(self) -> tuple[bytes | Pause, ...]:
         size = f"{self.label}{self.picture.height:02X}{self.picture.width:02X}"
         rows = b"".join(
             "".join(pixel.value for pixel in row).encode("ascii") + b"\r"
             for row in self.picture.rows
         )
-        return size.encode("ascii") + rows
-
-    def pauses_in_data(self) -> tuple[tuple[int, float], ...]:
         # p. 40: at least 100 ms after the Width, before the Row Bit Patterns.
-        return ((len(self.label) + 4, DOTS_PICTURE_ROWS_PAUSE),)
+        return (size.encode("ascii"), Pause(DOTS_PICTURE_ROWS_PAUSE), rows)
+
+    def requirements(self) -> Iterator[Requirement]:
+        """Table 70: pictures need the Graphic Capability, and note 1 says they must fit
+        the display. Table 69, note 1: an R model shows red only, so other colors need
+        the Color Capability."""
+        yield from super().requirements()
+        yield CapabilityRequirement(Capability.GRAPHIC, self)
+        yield DisplaySizeRequirement(self.picture.width, self.picture.height, self)
+        used = {pixel for row in self.picture.rows for pixel in row}
+        for color in sorted(used - _RED_ONLY_PIXELS, key=lambda c: c.value):
+            yield CapabilityRequirement(Capability.COLOR, color)
 
 
 class Read[T](Command):
-    """A Command that asks the Sign for data. It must be the last Command in a Packet."""
+    """A Command that asks the Sign for data. It must be the last Command in a Packet.
+
+    The Sign answers with a Response Command whose Command Code is ``response_code``
+    and whose data starts with ``response_prefix``, so a Response can be matched to
+    its Read without parsing it.
+    """
 
     must_be_last: ClassVar[bool] = True
+
+    response_code: ClassVar[str]
+    """The Command Code of the Response Command that answers this Read."""
+
+    @property
+    def response_prefix(self) -> str:
+        """What the answer's data starts with, such as a File Label."""
+        return ""
+
+    def answered_by(self, response: Sequence[ResponseItem]) -> bool:
+        """True if ``response`` holds the answer to this Read."""
+        return any(self._is_answer(item) for item in response)
+
+    def answer(self, response: Sequence[ResponseItem]) -> bytes:
+        """The answer's data after ``response_prefix``.
+
+        Raises UnexpectedResponseError if ``response`` answers some other Read.
+        """
+        for item in response:
+            if self._is_answer(item):
+                return item.data[len(self.response_prefix) :]
+        raise UnexpectedResponseError(
+            f"the Response does not answer {type(self).__name__} "
+            f"({self.response_code}{self.response_prefix}): {response!r}"
+        )
+
+    def _is_answer(self, item: ResponseItem) -> bool:
+        prefix = self.response_prefix.encode("ascii")
+        return item.code == self.response_code and item.data.startswith(prefix)
 
     @abstractmethod
     def parse(self, response: Sequence[ResponseItem]) -> T:
         """Turn the decoded Response into a value."""
-
-
-def _find(response: Sequence[ResponseItem], code: str, prefix: str, what: str) -> bytes:
-    """The data after ``prefix`` in the Response Command with ``code``."""
-    for item in response:
-        if item.code == code and item.data.startswith(prefix.encode("ascii")):
-            return item.data[len(prefix) :]
-    raise UnexpectedResponseError(f"the Response does not contain {what}: {response!r}")
 
 
 @dataclass(frozen=True)
@@ -518,6 +595,7 @@ class ReadText(Read[Message]):
     """Read a TEXT File back as a Message (p. 19). The Sign answers with a Write TEXT."""
 
     code: ClassVar[str] = "B"
+    response_code: ClassVar[str] = "A"  # Table 46: answered with a Write TEXT
     label: str
 
     def __post_init__(self) -> None:
@@ -526,8 +604,12 @@ class ReadText(Read[Message]):
     def encode_data(self) -> bytes:
         return self.label.encode("ascii")
 
+    @property
+    def response_prefix(self) -> str:
+        return self.label
+
     def parse(self, response: Sequence[ResponseItem]) -> Message:
-        return decode_message(_find(response, "A", self.label, f"TEXT File {self.label}"))
+        return decode_message(self.answer(response))
 
 
 @dataclass(frozen=True)
@@ -535,6 +617,7 @@ class ReadString(Read[tuple[Segment, ...]]):
     """Read a STRING File's content (p. 38). The Sign answers with a Write STRING."""
 
     code: ClassVar[str] = "H"
+    response_code: ClassVar[str] = "G"  # Table 59: answered with a Write STRING
     label: str
 
     def __post_init__(self) -> None:
@@ -543,8 +626,12 @@ class ReadString(Read[tuple[Segment, ...]]):
     def encode_data(self) -> bytes:
         return self.label.encode("ascii")
 
+    @property
+    def response_prefix(self) -> str:
+        return self.label
+
     def parse(self, response: Sequence[ResponseItem]) -> tuple[Segment, ...]:
-        return decode_content(_find(response, "G", self.label, f"STRING File {self.label}"))
+        return decode_content(self.answer(response))
 
 
 @dataclass(frozen=True)
@@ -552,6 +639,7 @@ class ReadDotsPicture(Read[DotsPicture]):
     """Read a SMALL DOTS PICTURE File (Table 23, p. 41). The Sign answers with an "I"."""
 
     code: ClassVar[str] = "J"
+    response_code: ClassVar[str] = "I"  # p. 41: answered with an "I"
     label: str
 
     def __post_init__(self) -> None:
@@ -560,22 +648,27 @@ class ReadDotsPicture(Read[DotsPicture]):
     def encode_data(self) -> bytes:
         return self.label.encode("ascii")
 
+    @property
+    def response_prefix(self) -> str:
+        return self.label
+
     def parse(self, response: Sequence[ResponseItem]) -> DotsPicture:
-        data = _find(response, "I", self.label, f"DOTS PICTURE File {self.label}")
-        return decode_dots_picture(data)
+        return decode_dots_picture(self.answer(response))
 
 
 class ReadSpecial[T](Read[T]):
     """A Read SPECIAL FUNCTION Command (Table 16, p. 29). The Sign answers with an "E"."""
 
     code: ClassVar[str] = "F"
+    response_code: ClassVar[str] = "E"  # Table 53: answered with an "E"
     label: ClassVar[str]
 
     def encode_data(self) -> bytes:
         return self.label.encode("ascii")
 
-    def _data(self, response: Sequence[ResponseItem]) -> bytes:
-        return _find(response, "E", self.label, f"SPECIAL FUNCTION {self.label!r}")
+    @property
+    def response_prefix(self) -> str:
+        return self.label
 
 
 @dataclass(frozen=True)
@@ -585,7 +678,7 @@ class ReadDayOfWeek(ReadSpecial[Weekday]):
     label: ClassVar[str] = "&"
 
     def parse(self, response: Sequence[ResponseItem]) -> Weekday:
-        return Weekday(self._data(response).decode("ascii"))
+        return Weekday(self.answer(response).decode("ascii"))
 
 
 @dataclass(frozen=True)
@@ -636,7 +729,7 @@ class ReadSerialErrorStatus(ReadSpecial[SerialErrorStatus]):
     label: ClassVar[str] = "*"
 
     def parse(self, response: Sequence[ResponseItem]) -> SerialErrorStatus:
-        data = self._data(response)
+        data = self.answer(response)
         if len(data) != 1:
             raise ResponseError(f"expected one Serial Error Status byte, got {data!r}")
         return SerialErrorStatus.decode(data[0])
@@ -669,7 +762,7 @@ class ReadGeneralInformation(ReadSpecial[GeneralInformation]):
     label: ClassVar[str] = '"'
 
     def parse(self, response: Sequence[ResponseItem]) -> GeneralInformation:
-        data = self._data(response)
+        data = self.answer(response)
         if data.startswith(b"\x00"):  # p. 29 note 1: only some Signs send it
             data = data[1:]
         text = data.decode("ascii", errors="replace")
@@ -707,7 +800,7 @@ class NetworkQuery(ReadSpecial[NetworkQueryResponse]):
     label: ClassVar[str] = "-"
 
     def parse(self, response: Sequence[ResponseItem]) -> NetworkQueryResponse:
-        data = self._data(response)
+        data = self.answer(response)
         if len(data) != 4:
             raise ResponseError(f"expected a 4-byte Network Query answer, got {data!r}")
         try:

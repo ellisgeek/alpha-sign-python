@@ -43,8 +43,13 @@ from alpha_led_sign.protocol.commands import (
     WriteText,
 )
 from alpha_led_sign.protocol.message import Frame, Message
-from alpha_led_sign.protocol.packet import Recipient, ResponseItem, decode_response, encode_packet
-from alpha_led_sign.protocol.response import ResponseError, UnexpectedResponseError
+from alpha_led_sign.protocol.packet import Recipient, encode_packet
+from alpha_led_sign.protocol.responses import (
+    ResponseError,
+    ResponseItem,
+    UnexpectedResponseError,
+    decode_response,
+)
 
 SYNC = b"\x00" * 5
 NULS = b"\x00" * 20
@@ -174,7 +179,7 @@ def test_a_read_must_be_the_last_command_in_a_packet() -> None:
 
 
 def test_read_text_rejects_a_response_to_something_else() -> None:
-    with pytest.raises(UnexpectedResponseError, match="TEXT File C"):
+    with pytest.raises(UnexpectedResponseError, match=r"ReadText \(AC\)"):
         ReadText("C").parse((ResponseItem("A", b"DFILE D"),))
 
 
