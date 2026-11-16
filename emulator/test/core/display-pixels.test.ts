@@ -108,5 +108,7 @@ describe("golden pixels per font", () => {
     const text = pages.map((p) => `${ESC}0b${p}`).join("");
     const drawn = pages.map((_, i) => pixelsAt(text, i, 100)).join("\n");
     await golden("font-seven-high-all", "Seven high, 20H-7FH, 20 per Frame", drawn);
-  });
+    // Five Frames of 20 characters: under coverage on a CI runner this takes
+    // about 9 s, past vitest's 5 s default.
+  }, 30_000);
 });
