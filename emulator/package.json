@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "check": "npm run typecheck && npm run lint",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.core.json",
     "lint": "biome check .",
@@ -24,6 +25,7 @@
     "@playwright/test": "^1.65.0",
     "@types/node": "^26.6.6",
     "@types/ws": "^8.18.2",
+    "@vitest/coverage-v8": "^5.1.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",

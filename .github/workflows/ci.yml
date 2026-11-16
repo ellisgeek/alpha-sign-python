@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # Codecov upload (OIDC)
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
@@ -23,12 +24,20 @@ jobs:
       - run: just check --show-diff-on-failure
         env:
           SKIP: emulator-biome,emulator-tsc
-      - run: just test
+      - run: just coverage --cov-report=xml
+      - uses: codecov/codecov-action@v7
+        with:
+          use_oidc: true
+          disable_search: true
+          files: coverage.xml
+          flags: library-offline
+          fail_ci_if_error: true
 
   emulator:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # Codecov upload (OIDC)
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -43,8 +52,22 @@ jobs:
       - run: uv sync --locked
       - run: just emu-install
       - run: just emu-check
-      - run: just emu-test
+      - run: just emu-coverage
+      - uses: codecov/codecov-action@v7
+        with:
+          use_oidc: true
+          disable_search: true
+          files: emulator/coverage/lcov.info
+          flags: emulator
+          fail_ci_if_error: true
       - run: just emu-build
       - run: just emu-install-browser --with-deps
       - run: just emu-test-page
-      - run: just test-emulator -rs
+      - run: just test-emulator -rs --cov --cov-report=xml
+      - uses: codecov/codecov-action@v7
+        with:
+          use_oidc: true
+          disable_search: true
+          files: coverage.xml
+          flags: library-emulator
+          fail_ci_if_error: true

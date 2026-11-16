@@ -1,0 +1,35 @@
+# Codecov (https://docs.codecov.com/docs/codecov-yaml). CI uploads three reports:
+# - library-offline: the library under the offline tests (`just coverage`)
+# - library-emulator: the library under the hardware tests run against the
+#   emulator (`just test-emulator --cov`)
+# - emulator: the emulator's TypeScript under its unit tests (`just emu-coverage`)
+# The status checks report coverage without failing a pull request.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+# The emulator's lcov paths are relative to emulator/.
+fixes:
+  - "src/core/::emulator/src/core/"
+  - "src/host/::emulator/src/host/"
+  - "src/page/::emulator/src/page/"
+
+flag_management:
+  default_rules:
+    carryforward: true
+  individual_flags:
+    - name: library-offline
+      paths: [src/alpha_led_sign/]
+    - name: library-emulator
+      paths: [src/alpha_led_sign/]
+    - name: emulator
+      paths: [emulator/src/]
+
+comment:
+  layout: "condensed_header, diff, flags, files"
+  require_changes: true

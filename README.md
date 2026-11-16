@@ -1,5 +1,9 @@
 # alpha-led-sign
 
+[![CI](https://github.com/ellisgeek/alpha-sign-python/actions/workflows/ci.yml/badge.svg)](https://github.com/ellisgeek/alpha-sign-python/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/ellisgeek/alpha-sign-python/graph/badge.svg)](https://codecov.io/gh/ellisgeek/alpha-sign-python)
+[![PyPI](https://img.shields.io/pypi/v/alpha-led-sign)](https://pypi.org/project/alpha-led-sign/)
+
 A typed Python library for controlling Alpha-protocol LED message signs (for
 example the Alpha 4000 Series) over a serial line.
 

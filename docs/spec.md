@@ -321,7 +321,8 @@ from a real Sign.
   that puts it there. Converting a Packet to bytes joins the Chunks and drops the
   pauses, for logging and comparison.
 - In a nested Packet only the last Command's pause comes after the Packet. An earlier
-  Command's pause, such as a tone's, is dropped (see the open questions).
+  Command's pause, such as Clear Memory's, is dropped (see the open questions).
+  Tones must be the last Command, so theirs always comes after the Packet.
 - Sending a Packet means writing each Chunk and then asking the Transport to pause.
   A Transport's write returns only once the bytes have left, so a pause is real
   silence on the line. Pause is part of the Transport seam so that a bridge adapter
@@ -634,7 +635,7 @@ manual brings in a model field or, for a Capability, the overrides field
 | Where a called DOTS PICTURE is drawn among text: the manual doesn't say. | At the text cursor, in an 8-row line centered on the display, cut to its top 8 rows whatever the font; five and seven high text ends one row above the line's bottom (a 4120C). | Witnessed, per font: text, a 15-dot bar, text; count the bar's dots and the unlit rows above it and above the text. |
 | A called DOTS PICTURE in Middle: p. 95 cuts only past 16 rows, p. 96 past 15. | All of a 15-row picture shows, at the top of its line. A 4120C agrees. | Witnessed: full height text, a 15-dot bar, text, in Middle; count the bar's dots. |
 | Fonts taller than 7 rows in Top, Bottom, or Fill on a two-line Sign: "size down" to 7-high (p. 96). | As the manual says; validation reports them and suggests Middle. A 4120C agrees. | Witnessed: full height in Fill, then in Middle. |
-| Pauses in a nested Packet: whether the Sign runs each nested Command as it arrives or only after EOT. | After EOT: only the last Command's `pause_after` is kept, so `[ClearMemory(), WriteText(...)]` or a tone followed by more Commands loses the earlier pause. | Not yet written: nest Clear Memory before a Memory Configuration and read General Information back; nest a tone before a write and listen. |
+| Pauses in a nested Packet: whether the Sign runs each nested Command as it arrives or only after EOT. | After EOT: only the last Command's `pause_after` is kept, so `[ClearMemory(), SetMemoryConfiguration(...)]` loses Clear Memory's 1.5 s. Tones must be the last Command, so no tone pause can be lost. | Automatic, needs erase permission: nest Clear Memory before a Memory Configuration; the memory in use must match the same configuration sent alone. |
 | Memory Configuration limit: whether the Sign takes exactly what note 1 allows. | The model's `memory_needed`, which on the 4120C adds 9 reserved bytes. | Automatic, needs erase permission: the largest File A beside File B is taken, one byte more is not. |
 
 ## Out of Scope
@@ -658,8 +659,9 @@ manual brings in a model field or, for a Capability, the overrides field
 
 Everything left needs a real Sign. Delete each item when it is done.
 
-- Pauses in a nested Packet (hardware checklist): write the test, run it on a
-  4120C, and settle the open question below.
+- Pauses in a nested Packet (hardware checklist): run
+  `test_a_memory_configuration_nested_after_clear_memory_is_kept` on a 4120C with
+  `ALPHA_SIGN_ALLOW_ERASE=1`, and settle the open question below.
 
 New hardware findings go in [hardware-results.md](hardware-results.md).
 
@@ -670,9 +672,9 @@ New hardware findings go in [hardware-results.md](hardware-results.md).
 - **NEWS FLASH and TRUMPET on a BetaBrite 1036**: whether it wants the letters or
   hex 3AH/3BH. No test of one is planned; the library sends the letters.
 - **Pauses in a nested Packet**: `encode_packet` keeps only the last Command's
-  `pause_after`. If the Sign runs nested Commands as they arrive, an earlier tone or
-  Clear Memory needs its pause after its own Command. Unchanged until the hardware
-  checklist item is run.
+  `pause_after`. If the Sign runs nested Commands as they arrive, a Clear Memory
+  nested before another Command needs its pause after its own Command (tones are
+  always last). Unchanged until the hardware checklist item is run.
 - **Strict mode and content that shows differently**: a font taller than 7 rows
   outside the Middle position on a two-line Sign is accepted and drawn 7 high, but it
   is reported with the unsupported Capabilities, so `strict=True` raises on it. A

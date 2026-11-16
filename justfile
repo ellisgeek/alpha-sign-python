@@ -22,6 +22,10 @@ check *args:
 test *args:
     uv run pytest "$@"
 
+# Run the offline tests with coverage; prints what is missed (extra arguments go to pytest)
+coverage *args:
+    uv run pytest --cov --cov-report=term "$@"
+
 # Run the tests that talk to a real sign on the given serial port (extra arguments go to pytest)
 test-hardware port *args:
     ALPHA_SIGN_PORT="$1" uv run pytest -m hardware "${@:2}"
@@ -104,6 +108,10 @@ emu-install-browser *args:
 # Run the emulator's tests
 emu-test:
     cd emulator && npm test
+
+# Run the emulator's tests with coverage of src/ (writes emulator/coverage/lcov.info)
+emu-coverage:
+    cd emulator && npm run test:coverage
 
 # Run the emulator page's browser test (Playwright; once: just emu-install-browser)
 emu-test-page:

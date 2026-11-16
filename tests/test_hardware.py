@@ -71,8 +71,10 @@ from alpha_led_sign import (
 )
 from alpha_led_sign.models import UnsupportedCapabilityWarning
 from alpha_led_sign.protocol.commands import (
+    ClearMemory,
     Command,
     Pause,
+    SetMemoryConfiguration,
     Tone,
     WriteDotsPicture,
 )
@@ -420,6 +422,24 @@ def _picture_file(sign: Sign, label: str, picture: DotsPicture) -> DotsPictureFi
     in_color = capabilities is None or Capability.COLOR in capabilities
     colors = PictureColors.TRICOLOR if in_color else PictureColors.MONOCHROME
     return DotsPictureFile(label, rows=picture.height, columns=picture.width, colors=colors)
+
+
+@needs_erase
+def test_a_memory_configuration_nested_after_clear_memory_is_kept(sign: Sign) -> None:
+    # Checklist: pauses in a nested Packet. Clear Memory is the only Command with a pause
+    # that may be nested before another (tones must be last), and encode_packet keeps
+    # only the last Command's pause. If the Sign runs each Command as it arrives, the
+    # Memory Configuration lands inside Clear Memory's 1.5 s and is lost.
+    files = [TextFile("A", size=256), StringFile("T", size=16)]
+    expected = _used(sign, files)
+    sign.clear_memory()
+
+    sign.send(ClearMemory(), SetMemoryConfiguration(files))
+    info = sign.info()
+
+    used = info.memory_total - info.memory_free
+    assert used == expected, f"{used} bytes in use after the nested Packet, not {expected}"
+    assert sign.serial_errors().ok
 
 
 @needs_erase

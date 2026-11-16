@@ -60,6 +60,7 @@ pass them on (to prek, pytest, or the emulator host).
 | `just setup` | Installs the dev dependencies, the git hooks, and the emulator's npm packages |
 | `just check [args]` | Runs prek on every file: ruff, ty, actionlint, file checks |
 | `just test [args]` | Runs the offline tests |
+| `just coverage [args]` | Runs the offline tests with coverage and prints the lines they miss |
 | `just test-hardware PORT [args]` | Runs the hardware tests against the Sign on `PORT` |
 | `just test-witness PORT [args]` | Runs the witnessed tests, which ask you what the Sign on `PORT` showed or played |
 | `just test-emulator [args]` | Runs the hardware tests against the emulator |
@@ -72,6 +73,7 @@ pass them on (to prek, pytest, or the emulator host).
 | `just emu-install` | Installs the emulator's npm packages |
 | `just emu-install-browser [args]` | Installs Chromium for the page test (CI adds `--with-deps`) |
 | `just emu-test` | Runs the emulator's tests |
+| `just emu-coverage` | Runs the emulator's tests with coverage of `src/` (writes `emulator/coverage/lcov.info`) |
 | `just emu-test-page` | Runs the emulator page's Playwright test (`just emu-install-browser` once first) |
 | `just emu-check` | Type checks and lints the emulator |
 | `just emu-build` | Builds the emulator's page into `emulator/dist` |
@@ -89,6 +91,16 @@ pass them on (to prek, pytest, or the emulator host).
   the code does.
 - `alpha_led_sign.protocol` has no I/O and no clock. A pause the protocol needs is
   part of the encoded `Packet`, so tests check it without sleeping.
+
+CI uploads coverage to [Codecov](https://codecov.io/gh/ellisgeek/alpha-sign-python)
+under three flags: `library-offline`, the library under the offline tests
+(`just coverage`); `library-emulator`, the library under the hardware tests run
+against the emulator (`just test-emulator --cov`); and `emulator`, the
+emulator's TypeScript under its unit tests (`just emu-coverage`). The browser
+code in `emulator/src/page/` is mostly tested by the Playwright page test,
+which collects no coverage. `codecov.yml` keeps the status checks
+informational. The upload authenticates with GitHub's OIDC token, so the
+repository needs no Codecov token, only to be added on codecov.io.
 
 ## Documentation
 

@@ -2,6 +2,10 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 .ruff_cache/
 dist/
 build/
@@ -30,3 +34,8 @@ emulator/playwright/.cache/
 
 # great-docs build output (great-docs.yml).
 great-docs/
+
+# Editor: share the repository's VS Code settings, keep personal files out.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json

@@ -6,6 +6,7 @@
       "!node_modules",
       "!dist",
       "!test-results",
+      "!coverage",
       "!playwright-report",
       "!src/core/display/manual-glyphs.ts"
     ]

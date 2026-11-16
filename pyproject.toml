@@ -51,6 +51,7 @@ dev = [
     "git-cliff>=2.14.2",
     "prek>=0.5.10",
     "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.17.4",
     "rust-just>=1.59.0",
     "ty>=0.0.99",
@@ -97,6 +98,15 @@ markers = [
     "emulator: runs the hardware tests against the emulator; needs Node and npm ci in emulator/",
     "witness: asks the person watching the sign; set ALPHA_SIGN_WITNESS=1 and run with -m witness -s",
 ]
+
+[tool.coverage.run]
+source = ["alpha_led_sign"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "@overload"]
 
 [tool.ty.src]
 exclude = ["docs"]

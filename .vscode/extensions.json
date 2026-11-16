@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "astral-sh.ty",
+    "biomejs.biome",
+    "quarto.quarto",
+    "skellock.just"
+  ]
+}
