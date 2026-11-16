@@ -4,7 +4,7 @@ The emulator draws text with the glyphs in Appendix O of the protocol manual,
 "Font character sets" (pp. 141-216). There, every font is drawn as a grid of dots,
 one per pixel of the character cell. `docs/reference/extract_fonts.py` reads those
 grids out of the PDF and writes `emulator/src/core/display/manual-glyphs.ts`. Fonts
-used to be drawn by hand for this project, and `.scratch/emulator-display-capture`
+used to be drawn by hand for this project, and [issue #2](https://github.com/ellisgeek/alpha-sign-python/issues/2)
 planned to copy them from video of a real Sign.
 
 Appendix O was missed at first: its glyphs are vector drawings, so text extraction
