@@ -3,6 +3,8 @@
 # - library-emulator: the library under the hardware tests run against the
 #   emulator (`just test-emulator --cov`)
 # - emulator: the emulator's TypeScript under its unit tests (`just emu-coverage`)
+# Each test run also uploads JUnit results (report_type: test_results) under the
+# same flags, plus emulator-page for the Playwright page test.
 # The status checks report coverage without failing a pull request.
 coverage:
   status:
