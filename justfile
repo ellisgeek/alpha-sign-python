@@ -46,6 +46,13 @@ docs:
 docs-preview:
     uv run --group docs great-docs preview
 
+# Redraw the wiring diagrams in docs/user_guide/wiring from their YAML (needs Graphviz)
+wiring:
+    cd docs/user_guide/wiring && uv run --group wiring wireviz -f s *.yml
+    # WireViz labels embedded SVG images image/svg; browsers need image/svg+xml.
+    sed -i.bak 's#data:image/svg;base64#data:image/svg+xml;base64#g' docs/user_guide/wiring/*.svg
+    rm docs/user_guide/wiring/*.svg.bak
+
 # Build the sdist and wheel into dist/
 build:
     uv build
