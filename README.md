@@ -12,6 +12,13 @@ protocol manual.
 The [documentation](https://ellisgeek.github.io/alpha-sign-python/) has a user
 guide and the API reference.
 
+## Install
+
+```sh
+pip install alpha-led-sign          # the library; needs Python 3.12 or later
+pip install 'alpha-led-sign[cli]'   # with the alpha-led-sign command
+```
+
 ## Example
 
 ```python
@@ -126,7 +133,6 @@ The `cli` extra installs an `alpha-led-sign` command for setting up a Sign and
 reading its state:
 
 ```sh
-pip install "alpha-led-sign[cli] @ git+https://github.com/ellisgeek/alpha-sign-python"
 alpha-led-sign --port /dev/tty.usbserial-1410 info
 alpha-led-sign --port /dev/tty.usbserial-1410 configure A:text:512 T:string:16
 alpha-led-sign --port /dev/tty.usbserial-1410 show "{color red}Hello"

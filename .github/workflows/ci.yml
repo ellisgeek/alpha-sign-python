@@ -1,5 +1,7 @@
 name: CI
 
+# Every tool comes from uv.lock: setup-uv activates the environment that
+# `uv sync --locked` fills, so `just` and `prek` are the locked versions.
 on:
   push:
     branches: [main]
@@ -15,9 +17,10 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - uses: extractions/setup-just@v4
+          activate-environment: true
+      - run: uv sync --locked
       # The emulator's hooks need its npm packages; the emulator job checks it.
-      - uses: j178/prek-action@v3.1.0
+      - run: just check --show-diff-on-failure
         env:
           SKIP: emulator-biome,emulator-tsc
       - run: just test
@@ -36,7 +39,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - uses: extractions/setup-just@v4
+          activate-environment: true
+      - run: uv sync --locked
       - run: just emu-install
       - run: just emu-check
       - run: just emu-test

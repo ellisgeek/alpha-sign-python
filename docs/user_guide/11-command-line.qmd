@@ -6,9 +6,9 @@ The `cli` extra installs an `alpha-led-sign` command for setting up a Sign and
 checking on it without writing Python:
 
 ```sh
-uv tool install "alpha-led-sign[cli] @ git+https://github.com/ellisgeek/alpha-sign-python"
+uv tool install 'alpha-led-sign[cli]'
 # or, in a project:
-pip install "alpha-led-sign[cli] @ git+https://github.com/ellisgeek/alpha-sign-python"
+pip install 'alpha-led-sign[cli]'
 ```
 
 `alpha-led-sign --help` lists every command, and `alpha-led-sign <command> --help` shows

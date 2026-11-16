@@ -14,9 +14,9 @@ setup: emu-install
     uv sync
     uv run prek install
 
-# Run the Python checks: ruff, ruff format, ty, actionlint, file checks
-check:
-    uv run prek run -a
+# Run the Python checks: ruff, ruff format, ty, actionlint, file checks (extra arguments go to prek)
+check *args:
+    uv run prek run -a "$@"
 
 # Run the offline Python tests (extra arguments go to pytest)
 test *args:
@@ -84,6 +84,14 @@ release:
 
     echo "Tagged $version. Review it, then publish with:"
     echo "  git push origin HEAD $version"
+
+# Print the release notes for the tagged version: its CHANGELOG.md entry
+release-notes:
+    uv run --frozen git-cliff --current --strip all
+
+# Upload dist/ to PyPI, skipping files already there (the Release workflow, with trusted publishing)
+publish:
+    uv publish --check-url https://pypi.org/simple/
 
 # Install the emulator's npm packages
 emu-install:

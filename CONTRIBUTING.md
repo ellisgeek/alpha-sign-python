@@ -53,12 +53,12 @@ the emulator read the manual the same way; only a real Sign settles a
 
 The `justfile` at the repo root holds every development command; the docs,
 the prek hooks' setup, and CI call its recipes. Recipes that take `[args]`
-pass them on (to pytest or the emulator host).
+pass them on (to prek, pytest, or the emulator host).
 
 | Recipe | Does |
 |---|---|
 | `just setup` | Installs the dev dependencies, the git hooks, and the emulator's npm packages |
-| `just check` | Runs prek on every file: ruff, ty, actionlint, file checks |
+| `just check [args]` | Runs prek on every file: ruff, ty, actionlint, file checks |
 | `just test [args]` | Runs the offline tests |
 | `just test-hardware PORT [args]` | Runs the hardware tests against the Sign on `PORT` |
 | `just test-witness PORT [args]` | Runs the witnessed tests, which ask you what the Sign on `PORT` showed or played |
@@ -67,6 +67,8 @@ pass them on (to pytest or the emulator host).
 | `just docs-preview` | Serves the documentation site in a browser |
 | `just build` | Builds the sdist and wheel into `dist/` |
 | `just release` | Bumps the version, writes the changelog, commits, and tags (never pushes) |
+| `just release-notes` | Prints the tagged version's changelog entry (the Release workflow) |
+| `just publish` | Uploads `dist/` to PyPI (the Release workflow, with trusted publishing) |
 | `just emu-install` | Installs the emulator's npm packages |
 | `just emu-install-browser [args]` | Installs Chromium for the page test (CI adds `--with-deps`) |
 | `just emu-test` | Runs the emulator's tests |
@@ -180,9 +182,18 @@ git push origin HEAD 0.1.0   # the version the recipe printed
 ```
 
 Pushing the tag starts the **Release** workflow. It checks that the tag is
-SemVer and matches `pyproject.toml`, runs the checks, builds the sdist and
-wheel, and publishes a GitHub release with the changelog entry as notes and
-the built files attached.
+SemVer and matches `pyproject.toml`, runs the checks, and builds the sdist and
+wheel (`just build`). It uploads them to [PyPI](https://pypi.org/project/alpha-led-sign/)
+(`just publish`), then publishes a GitHub release with the changelog entry
+(`just release-notes`) as notes and the built files attached. A rerun after a
+failed GitHub release skips the files PyPI already has.
+
+PyPI accepts the upload through
+[trusted publishing](https://docs.pypi.org/trusted-publishers/), so the
+repository holds no token. The publisher is set up once on PyPI: project
+`alpha-led-sign`, owner `ellisgeek`, repository `alpha-sign-python`, workflow
+`release.yml`, environment `pypi`. The repository has a matching `pypi`
+environment (Settings > Environments).
 
 ## Reference manuals
 

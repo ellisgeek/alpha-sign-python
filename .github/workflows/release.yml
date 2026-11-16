@@ -1,19 +1,19 @@
 name: Release
 
-# Publishes a GitHub release when a SemVer tag is pushed. Cut the release
-# locally first with `just release` (bump, changelog, commit, tag), then
-# push the commit and the tag.
+# Publishes a release when a SemVer tag is pushed. Cut the release locally
+# first with `just release` (bump, changelog, commit, tag), then push the
+# commit and the tag. The build job checks and builds; the files go to PyPI
+# (trusted publishing, the "pypi" environment) and then to a GitHub release.
 on:
   push:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
 
-permissions:
-  contents: write
-
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v5
         with:
@@ -22,8 +22,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-
-      - uses: extractions/setup-just@v4
+          activate-environment: true
 
       - name: Check tag matches the package version
         run: |
@@ -38,28 +37,68 @@ jobs:
             exit 1
           fi
 
+      - run: uv sync --locked
+
       # The emulator's hooks need its npm packages; CI checks the emulator.
-      - uses: j178/prek-action@v3.1.0
+      - run: just check --show-diff-on-failure
         env:
           SKIP: emulator-biome,emulator-tsc
 
       - run: just test -q
 
-      - name: Release notes
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: pyproject.toml
-          args: --current --strip all
-        env:
-          OUTPUT: ${{ runner.temp }}/notes.md
-
       - run: just build
+
+      - run: just release-notes > release-notes.md
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: |
+            dist/
+            release-notes.md
+          if-no-files-found: error
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/alpha-led-sign/${{ github.ref_name }}/
+    permissions:
+      contents: read
+      id-token: write # trusted publishing
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          activate-environment: true
+
+      - run: uv sync --locked
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+
+      - run: just publish
+
+  github:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
+            --notes-file release-notes.md \
             --verify-tag

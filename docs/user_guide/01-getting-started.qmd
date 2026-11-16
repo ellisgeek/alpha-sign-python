@@ -9,14 +9,17 @@ Series and the BetaBrite, and a generic profile for any Alpha sign.
 ## Install
 
 alpha-led-sign needs Python 3.12 or later. Its only dependency is
-[pyserial](https://pyserial.readthedocs.io/). It is not on PyPI yet, so install it
-from the repository:
+[pyserial](https://pyserial.readthedocs.io/). Install it from
+[PyPI](https://pypi.org/project/alpha-led-sign/):
 
 ```sh
-uv add git+https://github.com/ellisgeek/alpha-sign-python
+uv add alpha-led-sign
 # or
-pip install git+https://github.com/ellisgeek/alpha-sign-python
+pip install alpha-led-sign
 ```
+
+The `cli` extra adds the [`alpha-led-sign` command](11-command-line.qmd):
+`pip install 'alpha-led-sign[cli]'`.
 
 The import name is `alpha_led_sign`, distinct from the older `alphasign`
 library.
