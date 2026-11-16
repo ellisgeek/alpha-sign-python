@@ -640,9 +640,6 @@ manual brings in a model field or, for a Capability, the overrides field
 
 ## Out of Scope
 
-- An ESPHome Wi-Fi bridge Transport. Its design must keep the protocol's pauses. With
-  `socket://` support, a raw-TCP UART bridge may work with no new adapter, but the
-  pause concern still applies.
 - Alpha's own Ethernet adapters and serial servers.
 - A Sign emulator. It has its own spec, [emulator-spec.md](emulator-spec.md): a
   TypeScript program that the library reaches over `socket://`, with no new Transport.
@@ -672,23 +669,6 @@ New hardware findings go in [hardware-results.md](hardware-results.md).
   is reported with the unsupported Capabilities, so `strict=True` raises on it. A
   second, warn-only kind of problem would separate "shown differently" from "not
   supported". Not done until a user needs it.
-
-### Future projects
-
-- **A DOTS PICTURE editor.** A web tool for drawing and editing DOTS PICTURE File
-  content pixel by pixel, at a Sign Model's size and in its colors. It needs its own
-  spec. Notes for that spec:
-  - It depends on work that is out of scope today. The library can't write DOTS
-    PICTURE content yet, and the Sign emulator ([emulator-spec.md](emulator-spec.md))
-    does not draw DOTS PICTURE Files.
-  - It should reuse the emulator's palette, its model data (pixel size, tricolor or
-    red only), and its renderer, so that the editor previews a picture the way the
-    emulator draws it.
-  - Saved pictures should be in a form that both the library and the emulator can
-    load, so that a picture can be sent to a Sign or shown on the emulator.
-  - Its expected bytes follow the same rule as everything else: they come from the
-    manual's DOTS PICTURE layout or from a capture, never from the editor's own
-    encoder.
 
 ### Prior art
 
