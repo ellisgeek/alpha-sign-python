@@ -306,9 +306,14 @@ in use (docs/hardware-results.md, "Memory Configuration limit")."""
 
 @dataclass(frozen=True)
 class ClearMemory(SpecialFunction):
-    """Erase every File and the Memory Configuration ("$" with no data, p. 21)."""
+    """Erase every File and the Memory Configuration ("$" with no data, p. 21).
+
+    It must be the last Command in a Packet: a 4120C dropped a Memory Configuration
+    nested after it, so its pause has to follow the Packet.
+    """
 
     label: ClassVar[str] = "$"
+    must_be_last: ClassVar[bool] = True
 
     @property
     def pause_after(self) -> float:

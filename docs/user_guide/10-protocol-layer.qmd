@@ -21,7 +21,7 @@ print(sign.serial_errors().ok)    # did that Packet arrive intact?
 
 A Packet with more than one Command is **nested**. The Sign needs 100 ms of
 silence after each Command's start in a nested Packet, which the library keeps.
-Reads and tones must be the last Command in a Packet.
+Reads, tones, and Clear Memory must be the last Command in a Packet.
 
 `Sign.query` sends one read and returns its parsed answer:
 

@@ -205,6 +205,14 @@ def test_a_tone_must_be_the_last_command() -> None:
         encode_packet(ALL_SIGNS, [Beep(Tone.CONTINUOUS), ClearMemory()])
 
 
+def test_clear_memory_must_be_the_last_command() -> None:
+    # hardware-results.md: a 4120C dropped a Memory Configuration nested after Clear
+    # Memory, so Clear Memory's 1.5 s pause can't be lost inside a Packet.
+    files = [TextFile("A", size=256)]
+    with pytest.raises(ValueError, match="last"):
+        encode_packet(ALL_SIGNS, [ClearMemory(), SetMemoryConfiguration(files)])
+
+
 def test_soft_reset_and_clear_serial_error_status_have_no_data() -> None:
     # Table 15 (p. 22, p. 24): "," = Soft Reset, "4" = Clear Serial Error Status Register.
     assert SoftReset().encode_data() == b","
