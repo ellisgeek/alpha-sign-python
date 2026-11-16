@@ -405,7 +405,7 @@ def test_a_read_to_a_recipient_that_reaches_several_signs_is_sent_when_asked() -
     assert message == Message(Frame(None, content="FILE C"))  # Table 46
 
 
-# Markup: Sign methods read a str as markup (.scratch/markup/spec.md).
+# Markup: Sign methods read a str as markup (ADR 0004).
 
 
 def test_show_reads_markup() -> None:

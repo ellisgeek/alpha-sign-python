@@ -137,4 +137,4 @@ This project's notes, not Hackeriet's.
   green, and amber where both are lit). The 4120C is 120 columns, so 15 modules a row,
   if it uses the same driver boards.
 - **Firmware plan.** What this means for dumping and studying our 4120C's ROM is in
-  `.scratch/sign-firmware/spec.md`.
+  [issue #3](https://github.com/ellisgeek/alpha-sign-python/issues/3).

@@ -26,9 +26,10 @@ GitHub shares one number space across issues and PRs, so a bare `#42` may be eit
 
 ## Earlier issues
 
-Before the move to GitHub, efforts were tracked as markdown under `.scratch/<feature>/`:
-a `spec.md` and numbered issue files (`issues/NN-<slug>.md`) with a `Status:` line.
-Read those when a request points at one; file new work as GitHub issues.
+Before the move to GitHub, efforts were tracked as markdown under `.scratch/<feature>/`.
+That folder is gone: what the finished efforts decided is in `docs/spec.md` and the
+ADRs, the unfinished ones are issues #2 and #3, and the files themselves are in git
+history (`git log -- .scratch/`). File new work as GitHub issues.
 
 ## When a skill says "publish to the issue tracker"
 

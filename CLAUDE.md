@@ -41,8 +41,8 @@ be amended without a force push.
 
 ### Issue tracker
 
-GitHub Issues on `ellisgeek/alpha-sign-python`, through `gh`; earlier efforts
-are markdown under `.scratch/`. See `docs/agents/issue-tracker.md`.
+GitHub Issues on `ellisgeek/alpha-sign-python`, through `gh`. See
+`docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

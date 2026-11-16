@@ -1,4 +1,4 @@
-"""Markup: a string spelling of Messages, Frames, and Segments (.scratch/markup/spec.md)."""
+"""Markup: a string spelling of Messages, Frames, and Segments (ADR 0004)."""
 
 import pytest
 
