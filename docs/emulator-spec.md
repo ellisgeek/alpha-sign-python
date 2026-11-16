@@ -215,9 +215,9 @@ Sign once [hardware-results.md](hardware-results.md) records one.
   the library's encoder, decoder, or data. CLAUDE.md requires expected bytes from an
   independent source, and an emulator that shared the library's code would only check
   the library against itself.
-- The cost: the Python tests can't run the emulator in-process with virtual time.
-  Through the headless host, pauses are real, so a test that sounds a tone takes 3 s.
-  The core's own tests keep virtual time.
+- The cost: through the headless host, pauses are real, so a test that sounds a tone
+  takes 3 s. The core's own tests keep virtual time. ADR 0005 adds a second way in:
+  Python runs the built core in-process in an embedded engine, with virtual time.
 - This decision should be recorded as ADR 0002.
 
 ### Architecture
@@ -364,6 +364,11 @@ both readings side by side.
   firmware string. The capture tooling refuses to turn them into test vectors.
 - The fixture skips with a reason when Node is not installed. CI installs Node and runs
   the emulator tests.
+- Planned (ADR 0005): the package `alpha-led-sign-emulator` holds the core built into
+  one JavaScript file and a thin wrapper that runs it in `mini-racer`. Python code
+  calls the Line directly, in its own process and with virtual time. The TUI's preview
+  (#7) uses it, and so can a test that checks only what a Sign stores or shows. The
+  wrapper never imports `alpha_led_sign`.
 
 ### Tooling
 
@@ -372,8 +377,9 @@ both readings side by side.
   for tests, Biome for lint and format, and Playwright for the one page test.
 - prek gets hooks for Biome and the type check. CI gets a job for the emulator's tests
   and the Python `emulator` run.
-- The emulator is not published and has no version of its own for now. The
-  releases cover the Python package only. Commits follow the same Conventional Commits
+- The emulator is not published to npm. Its core is published as the Python package
+  `alpha-led-sign-emulator` (ADR 0005), with the same version as `alpha-led-sign`
+  and in the same releases. Commits follow the same Conventional Commits
   rules, so emulator subjects reach the changelog and must make sense to users.
 
 ## Testing Decisions
@@ -445,7 +451,8 @@ the emulator in place of a Sign.
 - Counters, Alpha 2.0 and 3.0 Commands and Control Codes, LARGE and RGB DOTS PICTURE
   Files, and extended characters, the same as the library.
 - Alpha's Ethernet adapters and serial servers, and the ESPHome bridge.
-- Publishing the emulator to npm or hosting the page.
+- Publishing the emulator to npm or hosting the page. (The core is published as a
+  Python package; see ADR 0005.)
 - Using emulator results as hardware results or as test vectors.
 - Running the witnessed tests against the emulator as a recorded result.
 
@@ -615,6 +622,7 @@ PROVISIONAL in the code are marked there too.
 - A dark theme for the page.
 - Fonts, Modes, Special Modes, and Special Graphics as a real Sign draws them. They
   need a way to capture a real Sign's display first (see Open questions).
+- The in-process core for Python, `alpha-led-sign-emulator` (ADR 0005).
 
 ### Results and open checks
 

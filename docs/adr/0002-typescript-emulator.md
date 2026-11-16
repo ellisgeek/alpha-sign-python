@@ -33,3 +33,6 @@ in-process with virtual time. It was rejected for the reasons above.
   when Node is missing.
 - The Emulator is not published and has no version of its own.
   Releases (ADR 0001) cover the Python package only.
+
+ADR 0005 changes the first and last of these consequences: Python can run the
+core in-process with virtual time, and the core ships as a Python package.
