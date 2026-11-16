@@ -1,0 +1,43 @@
+# Alpha's 6-wire RS-232 cable between the Sign and the RJ12-to-DB9 adapter.
+# Sources: Networking Alpha Signs (9700-0112C) p. 35; TechMemo 02-0010A p. 3.
+# Regenerate with `just wiring`.
+
+options:
+  fontname: Helvetica
+  bgcolor: WH
+  color_mode: full
+
+connectors:
+  Sign:
+    image:
+      src: faces/rj12-jack.svg
+      caption: Front view, latch slot down
+      height: 84
+      width: 120
+    type: RJ12 jack
+    subtype: female
+    notes: 4000 Series, back panel
+    pinlabels: [GND, RS-485 +, RXD (Sign in), TXD (Sign out), RS-485 −, +5 V (200 mA max)]
+  Adapter:
+    image:
+      src: faces/rj12-jack.svg
+      caption: Front view, latch slot down
+      height: 84
+      width: 120
+    type: RJ12 jack
+    subtype: female
+    pn: 1088-9108
+    notes: RJ12 side of the adapter
+    pinlabels: [GND, n/c, RXD, TXD, n/c, n/c]
+
+cables:
+  Cable:
+    pn: 1088-8625 / 1088-8627
+    notes: pin 1 to pin 1, not reversed
+    wirecount: 6
+    colors: [BU, YE, GN, RD, BK, WH]
+
+connections:
+  - - Sign: [1-6]
+    - Cable: [1-6]
+    - Adapter: [1-6]

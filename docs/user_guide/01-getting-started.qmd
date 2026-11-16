@@ -26,8 +26,9 @@ library.
 
 ## Connect a Sign
 
-A 4000 Series Sign has an RJ11 serial port. Connect it to a USB serial adapter,
-then open the Sign by the adapter's device name:
+A 4000 Series Sign has an RJ11 serial port. Connect it to a USB serial adapter
+([Wiring](12-wiring.qmd) has the cables and pinouts), then open the Sign by the
+adapter's device name:
 
 ```python
 from alpha_led_sign import Sign, models

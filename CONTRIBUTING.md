@@ -66,6 +66,7 @@ pass them on (to prek, pytest, or the emulator host).
 | `just test-emulator [args]` | Runs the hardware tests against the emulator |
 | `just docs` | Builds the documentation site into `great-docs/_site/` |
 | `just docs-preview` | Serves the documentation site in a browser |
+| `just wiring` | Redraws the user guide's wiring diagrams (needs Graphviz) |
 | `just build` | Builds the sdist and wheel into `dist/` |
 | `just release` | Bumps the version, writes the changelog, commits, and tags (never pushes) |
 | `just release-notes` | Prints the tagged version's changelog entry (the Release workflow) |
@@ -126,6 +127,13 @@ just docs-preview
 
 The `docs` dependency group includes Quarto, so nothing needs a system install.
 The first `just docs` installs it.
+
+The wiring diagrams in `docs/user_guide/wiring/` are drawn by
+[WireViz](https://github.com/wireviz/WireViz) from the `.yml` beside each one; the
+connector face drawings in `faces/` are hand-written SVG. After changing either, run
+`just wiring` and commit the `.yml` and the `.svg` it writes. It needs Graphviz
+(`brew install graphviz`, or your package manager's `graphviz`). The docs build uses
+the committed `.svg` files and doesn't need Graphviz.
 
 ## Git workflow
 
