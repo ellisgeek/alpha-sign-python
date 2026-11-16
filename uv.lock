@@ -36,6 +36,9 @@ docs = [
     { name = "great-docs" },
     { name = "quarto-cli" },
 ]
+wiring = [
+    { name = "wireviz" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -60,6 +63,7 @@ docs = [
     { name = "great-docs", specifier = ">=0.17.0" },
     { name = "quarto-cli", specifier = ">=1.11.9" },
 ]
+wiring = [{ name = "wireviz", specifier = "==0.4.1" }]
 
 [[package]]
 name = "annotated-doc"
@@ -677,6 +681,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/61/fa/8aa87dcec2838569c1d430d7212bb5264979c0f310a8cdbe0fd028713acb/git_cliff-2.14.2-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:a48196dd8421659e104f0ceb4b060ebc753c11cd421811cce36b34e3c5e5ecce", size = 8184787, upload-time = "2026-09-18T21:39:57.462Z" },
     { url = "https://files.pythonhosted.org/packages/f4/13/d0fd9e00b9f429d047e4bf5328a0e4f3ee758efd6a9ab2432b2c0f93ea28/git_cliff-2.14.2-py3-none-win32.whl", hash = "sha256:72ac7d419f503ec234c90e079bc5ee95d2c952de6fab3e9523375eb7754953f1", size = 6975026, upload-time = "2026-09-18T21:39:59.036Z" },
     { url = "https://files.pythonhosted.org/packages/eb/7f/dd88365bb279d87b91c58aa3abbdfd31eef09d226bdfb6a9293a4096f766/git_cliff-2.14.2-py3-none-win_amd64.whl", hash = "sha256:c1044450c714e7e1a6a5792d60c1ad47e197145dab0637156914b8b4067af5bf", size = 7962917, upload-time = "2026-09-18T21:40:00.488Z" },
+]
+
+[[package]]
+name = "graphviz"
+version = "0.21"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/b3/3ac91e9be6b761a4b30d66ff165e54439dcd48b83f4e20d644867215f6ca/graphviz-0.21.tar.gz", hash = "sha256:20743e7183be82aaaa8ad6c93f8893c923bd6658a04c32ee115edb3c8a835f78", size = 200434, upload-time = "2025-06-15T09:35:05.824Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/4c/e0ce1ef95d4000ebc1c11801f9b944fa5910ecc15b5e351865763d8657f8/graphviz-0.21-py3-none-any.whl", hash = "sha256:54f33de9f4f911d7e84e4191749cac8cc5653f815b06738c54db9a15ab8b1e42", size = 47300, upload-time = "2025-06-15T09:35:04.433Z" },
 ]
 
 [[package]]
@@ -2583,4 +2596,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/bf/60/bc7a980fc78837d6ef8f5940cca4cadc433364503a4c4d42e2a7a0de3231/widgetsnbextension-4.0.16.tar.gz", hash = "sha256:adeea0ae78f0856ee4945f413299801b82a0a01416303301f39a704282a37b73", size = 1111094, upload-time = "2026-08-18T08:52:55.859Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/34/95/40e17e20046b7bc820d29d09ae84ec157ec8dd6e6f6cd722626292c31b2e/widgetsnbextension-4.0.16-py3-none-any.whl", hash = "sha256:a31a8774885b96fe825462f5d6496166f0c7cae111195b6465c801d230eb5a4e", size = 2225148, upload-time = "2026-08-18T08:52:53.736Z" },
+]
+
+[[package]]
+name = "wireviz"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "graphviz" },
+    { name = "pillow" },
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/68/31/26e518535ae54f540dae0e83e583240d4bae9a883a6213d751b7b0c00304/wireviz-0.4.1.tar.gz", hash = "sha256:0e25ad8c2e3a269a7dd4a7f45e4e8d304db7e0432b1843a620acfa6be70570e1", size = 50281, upload-time = "2024-07-13T11:29:30.319Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9d/7a/5fc147e36159bdf7ff70cdd239e48512384ce32708ef8410df8fd62b4cf8/wireviz-0.4.1-py3-none-any.whl", hash = "sha256:5dfdfec91e5d26e4f27f0f9d031672da7fb3c133d127167d233f4742f01873a2", size = 52083, upload-time = "2024-07-13T11:29:28.972Z" },
 ]

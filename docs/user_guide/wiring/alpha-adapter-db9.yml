@@ -1,0 +1,51 @@
+# Inside Alpha's RJ12-to-DB9 adapter. DB9 signal names are the computer's.
+# Source: Networking Alpha Signs (9700-0112C) p. 42. Regenerate with `just wiring`.
+
+options:
+  fontname: Helvetica
+  bgcolor: WH
+  color_mode: full
+
+connectors:
+  RJ12:
+    image:
+      src: faces/rj12-jack.svg
+      caption: Front view, latch slot down
+      height: 84
+      width: 120
+    type: RJ12 jack
+    subtype: female
+    notes: from the Sign's cable
+    pinlabels: [GND, n/c, Sign RXD, Sign TXD, n/c, n/c]
+  DB9:
+    image:
+      src: faces/db9-female.svg
+      caption: Front view
+      height: 84
+      width: 144
+    type: DB9
+    subtype: female
+    notes: to the computer or a USB-to-RS-232 adapter
+    pinlabels:
+      - DCD (tied to 4, 6)
+      - RXD
+      - TXD
+      - DTR (tied to 1, 6)
+      - GND
+      - DSR (tied to 1, 4)
+      - RTS (tied to 8)
+      - CTS (tied to 7)
+      - RI
+
+cables:
+  Inside:
+    category: bundle
+    pn: 1088-9108
+    notes: wired inside the adapter
+    wirecount: 3
+    colors: [BK, BK, BK]
+
+connections:
+  - - RJ12: [1, 3, 4]
+    - Inside: [1-3]
+    - DB9: [5, 3, 2]
