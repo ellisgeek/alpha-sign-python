@@ -96,6 +96,8 @@ python-version = "3.12"
 [tool.pytest.ini_options]
 testpaths = ["tests", "src"]
 addopts = ["--strict-markers", "-m", "not hardware", "--doctest-modules"]
+# --junitxml writes the format Codecov's test analytics reads (CI's test results).
+junit_family = "legacy"
 markers = [
     "hardware: needs a real sign; set ALPHA_SIGN_PORT and run with -m hardware",
     "emulator: runs the hardware tests against the emulator; needs Node and npm ci in emulator/",

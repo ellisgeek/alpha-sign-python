@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # Codecov upload (OIDC)
+      id-token: write # Codecov uploads (OIDC)
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
@@ -24,7 +24,7 @@ jobs:
       - run: just check --show-diff-on-failure
         env:
           SKIP: emulator-biome,emulator-tsc
-      - run: just coverage --cov-report=xml
+      - run: just coverage --cov-report=xml --junitxml=reports/library-offline.xml
       - uses: codecov/codecov-action@v7
         with:
           use_oidc: true
@@ -32,12 +32,21 @@ jobs:
           files: coverage.xml
           flags: library-offline
           fail_ci_if_error: true
+      - uses: codecov/codecov-action@v7
+        if: ${{ !cancelled() && hashFiles('reports/library-offline.xml') != '' }}
+        with:
+          use_oidc: true
+          disable_search: true
+          report_type: test_results
+          files: reports/library-offline.xml
+          flags: library-offline
+          fail_ci_if_error: true
 
   emulator:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # Codecov upload (OIDC)
+      id-token: write # Codecov uploads (OIDC)
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -52,7 +61,7 @@ jobs:
       - run: uv sync --locked
       - run: just emu-install
       - run: just emu-check
-      - run: just emu-coverage
+      - run: just emu-coverage --reporter=default --reporter=junit --outputFile.junit=../reports/emulator.xml
       - uses: codecov/codecov-action@v7
         with:
           use_oidc: true
@@ -60,14 +69,43 @@ jobs:
           files: emulator/coverage/lcov.info
           flags: emulator
           fail_ci_if_error: true
+      - uses: codecov/codecov-action@v7
+        if: ${{ !cancelled() && hashFiles('reports/emulator.xml') != '' }}
+        with:
+          use_oidc: true
+          disable_search: true
+          report_type: test_results
+          files: reports/emulator.xml
+          flags: emulator
+          fail_ci_if_error: true
       - run: just emu-build
       - run: just emu-install-browser --with-deps
-      - run: just emu-test-page
-      - run: just test-emulator -rs --cov --cov-report=xml
+      - run: just emu-test-page --reporter=list,junit
+        env:
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: ${{ github.workspace }}/reports/emulator-page.xml
+      - uses: codecov/codecov-action@v7
+        if: ${{ !cancelled() && hashFiles('reports/emulator-page.xml') != '' }}
+        with:
+          use_oidc: true
+          disable_search: true
+          report_type: test_results
+          files: reports/emulator-page.xml
+          flags: emulator-page
+          fail_ci_if_error: true
+      - run: just test-emulator -rs --cov --cov-report=xml --junitxml=reports/library-emulator.xml
       - uses: codecov/codecov-action@v7
         with:
           use_oidc: true
           disable_search: true
           files: coverage.xml
+          flags: library-emulator
+          fail_ci_if_error: true
+      - uses: codecov/codecov-action@v7
+        if: ${{ !cancelled() && hashFiles('reports/library-emulator.xml') != '' }}
+        with:
+          use_oidc: true
+          disable_search: true
+          report_type: test_results
+          files: reports/library-emulator.xml
           flags: library-emulator
           fail_ci_if_error: true

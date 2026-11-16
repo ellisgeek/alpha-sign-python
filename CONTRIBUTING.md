@@ -74,8 +74,8 @@ pass them on (to prek, pytest, or the emulator host).
 | `just emu-install` | Installs the emulator's npm packages |
 | `just emu-install-browser [args]` | Installs Chromium for the page test (CI adds `--with-deps`) |
 | `just emu-test` | Runs the emulator's tests |
-| `just emu-coverage` | Runs the emulator's tests with coverage of `src/` (writes `emulator/coverage/lcov.info`) |
-| `just emu-test-page` | Runs the emulator page's Playwright test (`just emu-install-browser` once first) |
+| `just emu-coverage [args]` | Runs the emulator's tests with coverage of `src/` (writes `emulator/coverage/lcov.info`) |
+| `just emu-test-page [args]` | Runs the emulator page's Playwright test (`just emu-install-browser` once first) |
 | `just emu-check` | Type checks and lints the emulator |
 | `just emu-build` | Builds the emulator's page into `emulator/dist` |
 | `just emu-headless [args]` | Runs the headless emulator host (e.g. `--port 0`) |
@@ -102,6 +102,11 @@ code in `emulator/src/page/` is mostly tested by the Playwright page test,
 which collects no coverage. `codecov.yml` keeps the status checks
 informational. The upload authenticates with GitHub's OIDC token, so the
 repository needs no Codecov token, only to be added on codecov.io.
+
+Each test run also writes JUnit results to `reports/` (git-ignored), and CI
+uploads them to Codecov's test analytics, which reports failing and flaky tests
+on pull requests. The flags are the coverage flags plus `emulator-page` for the
+Playwright test. These uploads run even when the tests fail.
 
 ## Documentation
 

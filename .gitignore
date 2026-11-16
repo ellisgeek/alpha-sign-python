@@ -6,6 +6,8 @@ __pycache__/
 .coverage.*
 coverage.xml
 htmlcov/
+# JUnit test results that CI uploads to Codecov.
+reports/
 .ruff_cache/
 dist/
 build/
